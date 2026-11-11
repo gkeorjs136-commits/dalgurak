@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FBF3E4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="달그락 뽑기통">
+<title>달그락 뽑기통</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23D1453A'/%3E%3Cpath d='M14 30a18 18 0 0 1 36 0z' fill='%23E6F3F5' stroke='%232B2622' stroke-width='3'/%3E%3Crect x='12' y='30' width='40' height='20' rx='6' fill='%23D1453A' stroke='%232B2622' stroke-width='3'/%3E%3Ccircle cx='32' cy='40' r='4' fill='%232B2622'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+// ┌──────────────────────────────────────────────────────────────┐
+// │  Firebase 설정값을 여기에 붙여넣으세요.                         │
+// │  null 이면 "이 폰에만 저장" 모드로 혼자 써볼 수 있어요.          │
+// │  예) const FIREBASE_CONFIG = { apiKey: "...", authDomain: "...", projectId: "...", ... };
+// └──────────────────────────────────────────────────────────────┘
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDmtIQbvFpnDfA0boxOJDZ8vXhOsjGqcik",
+  authDomain: "dalgurak-2095c.firebaseapp.com",
+  projectId: "dalgurak-2095c",
+  storageBucket: "dalgurak-2095c.firebasestorage.app",
+  messagingSenderId: "331659667182",
+  appId: "1:331659667182:web:2e1978a56f86dda824f5ff",
+  measurementId: "G-646V19KJHM"
+};
+</script>
+<style>
+/* Layout: one phone-width column; sticker-style cards with ink outlines and hard offset shadows; the capsule machine is the hero. */
+:root {
+  --bg: #FBF3E4; --paper: #FFFBF3; --paper-2: #F3E9D6;
+  --ink: #2B2622; --muted: #6F655A; --line: #2B2622;
+  --red: #D1453A; --red-ink: #FFFFFF; --mint: #5FBFA8; --mint-ink: #1E3F38; --gold: #E8B931;
+  --a: #3D6BD6; --a-ink: #FFFFFF; --a-soft: #DCE6FA;
+  --b: #F5A742; --b-ink: #2B2622; --b-soft: #FBE8CC;
+  --glass: #E6F3F5; --track: #EFE3CF; --skin: #F3D7BE; --pants: #4A4038; --face: #2B2622; --b-text: #9A5E0E;
+  --dot: rgba(43,38,34,0.08);
+  --font: 'Gowun Dodum', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1F1B18; --paper: #2A2420; --paper-2: #342D27;
+    --ink: #F6EEE2; --muted: #B9AC9C; --line: #F6EEE2;
+    --red: #E2574B; --red-ink: #1F1B18; --mint: #5FBFA8; --mint-ink: #1E3F38; --gold: #E8B931;
+    --a: #6B93F0; --a-ink: #1F1B18; --a-soft: #2E3A55;
+    --b: #F5A742; --b-ink: #2B2622; --b-soft: #4A3A22;
+    --glass: #33454A; --track: #3A322C; --skin: #E9C9AC; --pants: #6A5E55; --face: #2B2622; --b-text: #F5A742;
+    --dot: rgba(246,238,226,0.07);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg) radial-gradient(var(--dot) 1px, transparent 1px); background-size: 18px 18px;
+  color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.45;
+  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+h1, h2, h3, p { margin: 0; }
+h2 { font-size: 16px; font-weight: 700; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+a { color: inherit; }
+
+#app { max-width: 480px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 52px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.topbar .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.topbar .next { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 5px; min-width: 0; }
+.topbar .next span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iconbtn { width: 44px; height: 44px; border: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; margin-right: -10px; flex-shrink: 0; }
+.iconbtn:hover { background: var(--paper-2); }
+
+main {
+  flex: 1; display: flex; flex-direction: column; gap: 16px;
+  padding-block: 8px calc(100px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sec-head .sub { font-size: 12px; color: var(--muted); text-align: right; }
+
+.card { background: var(--paper); border: 2px solid var(--line); border-radius: 20px; box-shadow: 0 4px 0 var(--line); padding: 12px 14px; min-width: 0; }
+.card.flat { box-shadow: none; }
+.card.soft { border-style: dashed; box-shadow: none; }
+.btn {
+  min-height: 44px; padding: 0 16px; border-radius: 14px; border: 2px solid var(--line);
+  background: var(--paper); color: var(--ink); font-weight: 700; font-size: 14px;
+  box-shadow: 0 3px 0 var(--line); transition: transform .08s, box-shadow .08s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: 0 3px 0 var(--line); }
+.btn.red { background: var(--red); color: var(--red-ink); }
+.btn.mint { background: var(--mint); color: var(--mint-ink); }
+.btn.sm { min-height: 44px; padding: 0 14px; font-size: 13px; border-radius: 12px; box-shadow: 0 2px 0 var(--line); }
+.btn.ghost { box-shadow: none; border-color: transparent; background: transparent; }
+.btn:focus-visible, .iconbtn:focus-visible, .tab:focus-visible, .chip:focus-visible, .swatch:focus-visible, .card[data-role]:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
+.stepper button:focus-visible { outline: 3px solid var(--mint); outline-offset: -3px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--paper); white-space: nowrap; }
+.pill.gold { background: var(--gold); color: #2B2622; }
+.pill.mint { background: var(--mint); color: var(--mint-ink); }
+.pill.red { background: var(--red); color: var(--red-ink); }
+.pill.muted { color: var(--muted); border-color: var(--muted); }
+.who-a { color: var(--a); font-weight: 700; } .who-b { color: var(--b-text); font-weight: 700; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.pbar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; border: 1.5px solid var(--line); background: var(--paper-2); }
+.pbar .pa { background: var(--a); } .pbar .pb { background: var(--b); }
+.pbar .adj-a { background: repeating-linear-gradient(135deg, var(--a) 0 4px, var(--paper) 4px 7px); }
+.pbar .adj-b { background: repeating-linear-gradient(135deg, var(--b) 0 4px, var(--paper) 4px 7px); }
+
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) 186px minmax(0, 1fr); align-items: end; gap: 4px; min-height: 330px; }
+@media (max-width: 420px) { .hero { grid-template-columns: minmax(0, 1fr) 140px minmax(0, 1fr); } }
+.player { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.bubble { position: relative; background: var(--paper); border: 2px solid var(--line); border-radius: 14px; padding: 6px 8px; font-size: 11px; line-height: 1.3; text-align: center; box-shadow: 0 3px 0 var(--line); max-width: 100%; word-break: keep-all; }
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; margin-left: -5px; background: var(--paper); border-right: 2px solid var(--line); border-bottom: 2px solid var(--line); transform: rotate(45deg); }
+.badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 14px; border: 2px solid var(--line); text-align: center; line-height: 1.25; max-width: 100%; word-break: keep-all; }
+.badge.a { background: var(--a); color: var(--a-ink); } .badge.b { background: var(--b); color: var(--b-ink); }
+.char { width: 100%; max-width: 104px; height: auto; display: block; overflow: visible; }
+.char .body { transform-box: fill-box; transform-origin: 50% 90%; }
+.char.sleepy .body { transform: rotate(6deg) translateY(2px); }
+.char.pout .body { transform: rotate(-3deg); }
+.char.proud .body { animation: hop 1.6s ease-in-out infinite; }
+.char.done .body { animation: jump .6s ease-out; }
+.char.calm .body { animation: breathe 3s ease-in-out infinite; }
+.zz { animation: floatz 2.5s ease-in-out infinite; }
+.spark { animation: twinkle 1.4s ease-in-out infinite; } .spark.s2 { animation-delay: .7s; }
+@keyframes hop { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
+@keyframes jump { 0% { transform: translateY(0) } 40% { transform: translateY(-8px) } 100% { transform: translateY(0) } }
+@keyframes breathe { 0%,100% { transform: scaleY(1) } 50% { transform: scaleY(1.015) } }
+@keyframes floatz { 0% { opacity: 0; transform: translateY(4px) } 30% { opacity: 1 } 100% { opacity: 0; transform: translateY(-10px) } }
+@keyframes twinkle { 0%,100% { opacity: .2; transform: scale(.8) } 50% { opacity: 1; transform: scale(1.1) } }
+
+.machine-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.machine { width: 100%; height: auto; display: block; overflow: visible; }
+.machine .dome, .machine .marbles { transform-box: fill-box; transform-origin: 50% 100%; }
+.machine.shaking .dome { animation: shake 1.2s ease-in-out; }
+.machine.shaking .marbles { animation: jiggle 1.2s ease-in-out; }
+.machine.shaking .handle { animation: spin 1.2s ease-in-out; transform-box: fill-box; transform-origin: 50% 50%; }
+.machine .drop { opacity: 0; }
+.machine.dropping .drop { animation: drop .5s ease-in forwards; }
+@keyframes shake { 0%,100% { transform: rotate(0) } 15% { transform: rotate(-4deg) } 30% { transform: rotate(4deg) } 45% { transform: rotate(-3deg) } 60% { transform: rotate(3deg) } 75% { transform: rotate(-2deg) } 90% { transform: rotate(1deg) } }
+@keyframes jiggle { 0%,100% { transform: translateY(0) } 20% { transform: translateY(-6px) } 40% { transform: translateY(2px) } 60% { transform: translateY(-5px) } 80% { transform: translateY(1px) } }
+@keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
+@keyframes drop { 0% { opacity: 1; transform: translateY(-40px) } 70% { opacity: 1; transform: translateY(0) } 85% { transform: translateY(-5px) } 100% { opacity: 1; transform: translateY(0) } }
+.machine-label { font-size: 11px; font-weight: 700; color: var(--muted); background: var(--paper); border: 2px solid var(--line); border-radius: 999px; padding: 2px 10px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+.result-banner { border: 2px solid var(--line); border-radius: 20px; background: var(--paper); box-shadow: 0 4px 0 var(--line); padding: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; animation: pop .35s ease-out; }
+.result-banner .big { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; word-break: keep-all; }
+.result-banner .shout { font-size: 13px; color: var(--muted); letter-spacing: 2px; }
+@keyframes pop { 0% { transform: scale(.92); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
+.rattle { animation: rattle .4s linear infinite; display: inline-block; }
+@keyframes rattle { 0%,100% { transform: translateX(0) } 25% { transform: translateX(-2px) } 75% { transform: translateX(2px) } }
+
+.capsule-card { display: flex; align-items: center; gap: 10px; }
+.capsule-card .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.capsule-card .title { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; word-break: keep-all; }
+.capsule-card .reason { font-size: 11px; color: var(--muted); line-height: 1.3; word-break: keep-all; }
+.capsule-card.done { opacity: .62; }
+.capsule-card.done .title > span:first-child { text-decoration: line-through; text-decoration-thickness: 2px; }
+.cap-icon { flex-shrink: 0; width: 44px; height: 44px; }
+
+.track { display: flex; align-items: flex-end; gap: 6px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+.track::-webkit-scrollbar { display: none; }
+.slot { flex-shrink: 0; width: 56px; height: 56px; border-radius: 12px; border: 1.5px dashed var(--line); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; font-size: 10px; color: var(--muted); }
+.slot.inlet { width: 44px; border: 0; background: var(--line); color: var(--bg); font-weight: 700; line-height: 1.2; text-align: center; align-items: center; }
+.slot.cap { width: 88px; height: auto; min-height: 78px; flex-direction: column; align-items: center; gap: 4px; justify-content: flex-end; padding: 6px 4px; color: var(--ink); }
+.slot.cap.next { background: var(--mint); color: var(--mint-ink); border-style: solid; }
+.slot.cap .n { font-size: 10px; font-weight: 700; text-align: center; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; }
+.slot.cap .n small { font-weight: 400; display: block; white-space: nowrap; }
+.wobble { animation: wobble 1.6s ease-in-out infinite; }
+@keyframes wobble { 0%,100% { transform: rotate(-6deg) } 50% { transform: rotate(6deg) } }
+
+.score-row { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
+.score-row .lbl { width: auto; max-width: 84px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tube { flex: 1; height: 14px; border: 2px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--paper-2); }
+.tube > div { height: 100%; transition: width .6s ease; }
+
+.nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); background: var(--paper); border-top: 2px solid var(--line); }
+.nav-inner { width: 100%; max-width: 480px; display: flex; justify-content: space-around; align-items: center; height: 64px; padding: 0 8px; }
+.tab { height: 46px; padding: 0 12px; border-radius: 14px; border: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.tab.on { background: var(--red); color: var(--red-ink); border-color: var(--line); }
+.tab svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; font-weight: 700; color: var(--muted); }
+.input { min-height: 44px; padding: 0 12px; border: 2px solid var(--line); border-radius: 12px; background: var(--paper); width: 100%; min-width: 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.nowrap { flex-wrap: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.stepper { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); flex-shrink: 0; }
+.stepper button { width: 44px; height: 44px; border: 0; background: transparent; font-size: 20px; font-weight: 700; }
+.stepper button:disabled { opacity: .3; }
+.stepper .v { min-width: 36px; text-align: center; font-weight: 700; font-size: 16px; }
+.stepper .v.wide { min-width: 62px; font-size: 14px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { min-height: 44px; padding: 0 12px; border-radius: 999px; border: 2px solid var(--line); background: var(--paper); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.chip.on { background: var(--ink); color: var(--bg); }
+.chip svg { width: 18px; height: 18px; }
+.swatch { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--line); padding: 0; box-shadow: inset 0 0 0 4px var(--paper); }
+.swatch.on { outline: 3px solid var(--mint); outline-offset: 2px; }
+.coinrow { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.coin { aspect-ratio: 1; border-radius: 50%; border: 1.5px solid var(--line); background: var(--paper-2); }
+.coin.on { background: var(--gold); }
+.notice { background: var(--paper-2); border-radius: 14px; padding: 10px 12px; font-size: 12px; line-height: 1.4; display: flex; gap: 8px; align-items: flex-start; word-break: keep-all; }
+.notice.warn { background: var(--b-soft); }
+.notice svg { flex-shrink: 0; margin-top: 1px; }
+.hist-day { display: flex; flex-direction: column; gap: 6px; }
+.hist-day .d { font-size: 12px; font-weight: 700; color: var(--muted); }
+.hist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1.5px dashed var(--track); }
+.hist-item:last-child { border-bottom: 0; }
+.hist-item .t { flex: 1; min-width: 0; font-size: 13px; word-break: keep-all; }
+.hist-item .r { font-size: 11px; color: var(--muted); }
+.empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 8px; word-break: keep-all; }
+.toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; z-index: 20; animation: pop .25s ease-out; max-width: calc(100% - 32px); text-align: center; }
+.heart { position: absolute; font-size: 18px; animation: heartup 1.6s ease-out forwards; pointer-events: none; }
+@keyframes heartup { 0% { opacity: 0; transform: translateY(0) scale(.6) } 20% { opacity: 1 } 100% { opacity: 0; transform: translateY(-70px) scale(1.2) } }
+.onb-steps { display: flex; gap: 6px; }
+.onb-steps span { flex: 1; height: 6px; border-radius: 999px; background: var(--track); }
+.onb-steps span.on { background: var(--red); }
+.hero-wrap { position: relative; }
+.rule { font-size: 12px; line-height: 1.55; color: var(--muted); word-break: keep-all; }
+.rule b { color: var(--ink); }
+.code { font-size: 22px; font-weight: 700; letter-spacing: 3px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="live" class="sr" aria-live="polite" aria-atomic="true"></div>
+<script>
+(function () {
+  'use strict';
+  // ---------- constants ----------
+  const LOCAL_KEY = 'dalgurak-local-v2';
+  const ROOM_KEY = 'dalgurak-room-code';
+  const ROLE_KEY = 'dalgurak-role-';
+  // outfit catalog
+  const HAIRS = { bob: '단발', long: '긴 머리', tie: '묶은 머리', bun: '똥머리', short: '짧은 머리', curly: '곱슬', buzz: '아주 짧게' };
+  const SKINS = ['#F7E0C7', '#F3D7BE', '#D9A77C', '#A86A3F'];
+  const SKIN_NAMES = { '#F7E0C7': '밝은 피부', '#F3D7BE': '살구 피부', '#D9A77C': '갈색 피부', '#A86A3F': '진한 피부' };
+  const HAIR_COLORS = ['#2B2622', '#6B4A36', '#B5651D', '#D9A441', '#8E8E8E', '#C94C6D'];
+  const HAIR_COLOR_NAMES = { '#2B2622': '검정', '#6B4A36': '진갈색', '#B5651D': '밝은 갈색', '#D9A441': '금발', '#8E8E8E': '회색', '#C94C6D': '핑크' };
+  const TOPS = { tee: '티셔츠', hoodie: '후드', collar: '셔츠', stripe: '줄무늬', dress: '원피스' };
+  const TOP_COLORS = ['#3D6BD6', '#F5A742', '#D1453A', '#5FBFA8', '#8E6BC9', '#F2C94C', '#F6EEE2', '#2B2622'];
+  const BOTTOMS = { pants: '긴바지', shorts: '반바지', skirt: '치마' };
+  const BOTTOM_COLORS = ['#4A4038', '#2F4A7A', '#8A5A3C', '#6F8F5E', '#C9C2B5', '#2B2622'];
+  const ACCS = { none: '없음', glasses: '안경', cap: '모자', band: '머리띠' };
+  const COLOR_NAMES = { '#3D6BD6': '파랑', '#F5A742': '귤색', '#D1453A': '빨강', '#5FBFA8': '민트', '#8E6BC9': '보라', '#F2C94C': '노랑', '#F6EEE2': '크림', '#2B2622': '검정', '#4A4038': '진갈색', '#2F4A7A': '남색', '#8A5A3C': '갈색', '#6F8F5E': '카키', '#C9C2B5': '베이지' };
+  const defaultPlayer = (p) => ({ name: '', hair: p === 'A' ? 'bob' : 'short', hairColor: p === 'A' ? '#2B2622' : '#6B4A36', skin: '#F3D7BE', top: p === 'A' ? 'tee' : 'hoodie', topColor: p === 'A' ? '#3D6BD6' : '#F5A742', bottom: 'pants', bottomColor: '#4A4038', acc: 'none' });
+  const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  function randomOutfit(pl) { pl.hair = pickRandom(Object.keys(HAIRS)); pl.hairColor = pickRandom(HAIR_COLORS); pl.skin = pickRandom(SKINS); pl.top = pickRandom(Object.keys(TOPS)); pl.topColor = pickRandom(TOP_COLORS); pl.bottom = pickRandom(Object.keys(BOTTOMS)); pl.bottomColor = pickRandom(BOTTOM_COLORS); pl.acc = pickRandom(Object.keys(ACCS)); return pl; }
+  const EXAMPLE_CHORES = [
+    { name: '빨래(수건)', icon: 'towel', period: 5 },
+    { name: '설거지', icon: 'dish', period: 1 },
+    { name: '화장실 청소', icon: 'toilet', period: 7 },
+  ];
+  const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+  const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const ICONS = {
+    dish: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
+    towel: '<rect x="5" y="4" width="14" height="16" rx="3"/><path d="M5 10h14"/>',
+    toilet: '<circle cx="8" cy="6.5" r="2.5"/><circle cx="15" cy="5" r="2"/><path d="M6 12h12l-2 8H8z"/>',
+    broom: '<path d="M14 3l-6 6"/><path d="M4 21l4-4"/><path d="M8 17l3-3 4 4-3 3z"/><path d="M11 14l3-3 4 4-3 3"/>',
+    trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
+    laundry: '<rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="13" r="5"/><path d="M7 6h3"/>',
+    pot: '<path d="M4 10h16v6a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z"/><path d="M2 10h20"/><path d="M9 6c0-2 2-2 2-4M14 6c0-2 2-2 2-4"/>',
+    plant: '<path d="M12 21v-8"/><path d="M12 13c-4 0-7-3-7-7 4 0 7 3 7 7z"/><path d="M12 13c4 0 7-3 7-7-4 0-7 3-7 7z"/><path d="M8 21h8"/>',
+    window: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 4v16M4 12h16"/>',
+    bed: '<path d="M3 18V8h18v10"/><path d="M3 13h18"/><path d="M6 8V6h5v2"/>',
+    cart: '<path d="M3 4h2l2 11h11l2-7H7"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>',
+    dog: '<path d="M6 10c0-4 3-6 6-6s6 2 6 6v3a6 6 0 0 1-12 0z"/><path d="M4 7l2 3M20 7l-2 3"/><circle cx="10" cy="11" r="1"/><circle cx="14" cy="11" r="1"/><path d="M12 14v2"/>',
+  };
+  const ICON_NAMES = { dish: '접시', towel: '수건', toilet: '화장실', broom: '빗자루', trash: '쓰레기', laundry: '세탁기', pot: '냄비', plant: '화분', window: '창문', bed: '침구', cart: '장보기', dog: '반려동물' };
+
+  // ---------- utils ----------
+  const $ = (s, el) => (el || document).querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = (n) => String(n).padStart(2, '0');
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  function dateStr(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function timeStr(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function parseDate(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+  function addDays(s, n) { const d = parseDate(s); d.setDate(d.getDate() + n); return dateStr(d); }
+  function daysBetween(a, b) { return Math.round((parseDate(b) - parseDate(a)) / 86400000); }
+  function fmtDate(s, withWeek) { const d = parseDate(s); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일' + (withWeek ? ' (' + WEEK[d.getDay()] + ')' : ''); }
+  function fmtTime(t) { const [h, m] = t.split(':').map(Number); return (h < 12 ? '오전 ' : '오후 ') + ((h % 12) || 12) + ':' + pad(m); }
+  function relDay(s, today) { const n = daysBetween(today, s); if (n === 0) return '오늘'; if (n === 1) return '내일'; if (n === 2) return '모레'; return n + '일 뒤'; }
+  function pct(x) { return Math.round(x * 100); }
+  function uid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
+  function makeCode() { let s = ''; const arr = new Uint32Array(8); if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(arr); else for (let i = 0; i < 8; i++) arr[i] = Math.floor(Math.random() * 1e9); for (let i = 0; i < 8; i++) s += CODE_ALPHABET[arr[i] % CODE_ALPHABET.length]; return s; }
+  function xmur3(str) { let h = 1779033703 ^ str.length; for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); } return function () { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return (h ^= h >>> 16) >>> 0; }; }
+  function mulberry32(a) { return function () { let t = (a += 0x6D2B79F5); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function seededRandom(key) { const seed = xmur3(key); return mulberry32(seed()); }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  // Korean particle helper: josa('하람','이','가') → '하람이', josa('지우','이','가') → '지우가'
+  function josa(w, withJong, withoutJong) { const t = String(w).replace(/[^가-힣]+$/, ''); const ch = t.slice(-1).charCodeAt(0); const ko = ch >= 0xAC00 && ch <= 0xD7A3; const jong = ko && (ch - 0xAC00) % 28 !== 0; return w + (jong ? withJong : withoutJong); }
+  function icon(name, size) { return '<svg width="' + (size || 20) + '" height="' + (size || 20) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || ICONS.dish) + '</svg>'; }
+
+  // ---------- state ----------
+  let state = null;          // shared room document
+  let me = null;             // 'A' | 'B'
+  let route = 'today';
+  const store = { mode: 'local', db: null, ref: null, code: null, unsub: null, error: null };
+  let onb = { step: 1, draft: null };
+  let reveal = null;
+  let doneFlash = { A: 0, B: 0 };
+  let toastTimer = null;
+  let loading = true;
+  let addingChore = false;
+  let editingChore = null;
+  let resetArmed = false;
+  let walletDraft = null;
+  let roomScreen = null;     // null | 'pick' | 'join'
+  let busy = false;
+  let switchArmed = false;
+  let fitOpen = null;        // which player's outfit editor is open in settings
+
+  // ---------- rules (pure: work on the state object passed in) ----------
+  function choresOf(s) { return (s && s.chores) || []; }
+  function nameOf(s, p) { return (s && s.players && s.players[p] && s.players[p].name) || (p === 'A' ? '첫째' : '둘째'); }
+  function other(p) { return p === 'A' ? 'B' : 'A'; }
+  function walletValidOf(s, p) {
+    const cs = choresOf(s); const prefs = (s.prefs && s.prefs[p]) || {};
+    if (!cs.length) return false; let sum = 0;
+    for (const c of cs) { const v = prefs[c.id]; if (!(v >= 1 && v <= 10)) return false; sum += v; }
+    return sum === 5 * cs.length;
+  }
+  function coinsOf(s, p, choreId) { return walletValidOf(s, p) ? s.prefs[p][choreId] : 5; }
+  function isDue(c, d) {
+    if (d < c.startDate) return false;
+    if (c.createdDate && d < c.createdDate) return false;
+    return daysBetween(c.startDate, d) % c.period === 0;
+  }
+  function nextDue(c, fromDate, s) {
+    let d = fromDate; if (d < c.startDate) d = c.startDate; if (c.createdDate && d < c.createdDate) d = c.createdDate;
+    const gap = daysBetween(c.startDate, d); const off = (c.period - (gap % c.period)) % c.period; d = addDays(d, off);
+    const draws = (s || state || {}).draws || {};
+    for (let i = 0; i < 60 && draws[drawKey(d, c.id)]; i++) d = addDays(d, c.period);   // skip cycles already drawn
+    return d;
+  }
+  function walletStateOf(s, p) { if (walletValidOf(s, p)) return 'ok'; const prefs = (s.prefs && s.prefs[p]) || {}; return Object.keys(prefs).length ? 'stale' : 'empty'; }
+  function drawKey(d, choreId) { return d + '_' + choreId; }
+  function drawsOf(s) { return Object.values((s && s.draws) || {}); }
+  function scoresBeforeOf(s, d) { const r = { A: 0, B: 0 }; for (const x of drawsOf(s)) { if (x.date < d) r[x.who] += x.points; } return r; }
+  function scoresAllOf(s) { const r = { A: 0, B: 0 }; for (const x of drawsOf(s)) r[x.who] += x.points; return r; }
+  function calcProbOf(s, c, scores) {
+    const ca = coinsOf(s, 'A', c.id), cb = coinsOf(s, 'B', c.id);
+    const base = ca / (ca + cb);
+    const diff = scores.B - scores.A;
+    const adj = clamp(diff * 0.02, -0.2, 0.2);
+    const raw = base + adj;
+    const final = clamp(raw, 0.15, 0.85);
+    return { pA: final, base, adj, diff, clampLow: raw < 0.15, clampHigh: raw > 0.85, ca, cb, neutral: !walletValidOf(s, 'A') || !walletValidOf(s, 'B') };
+  }
+  function reasonTextOf(s, c, r, who) {
+    const nA = nameOf(s, 'A'), nB = nameOf(s, 'B'); const parts = [];
+    const likerPart = () => { const liker = r.ca > r.cb ? 'A' : 'B'; const p = liker === 'A' ? pct(r.base) : 100 - pct(r.base); return nameOf(s, liker) + ': ' + josa(c.name, '을', '를') + ' 덜 싫어해서 ' + p + '%'; };
+    if (r.neutral) {
+      const wsA = walletStateOf(s, 'A'), wsB = walletStateOf(s, 'B');
+      const missing = [wsA !== 'ok' ? nA : null, wsB !== 'ok' ? nB : null].filter(Boolean).join('·');
+      const why = (wsA === 'stale' || wsB === 'stale') ? ' 지갑이 아직 안 맞아서' : ' 지갑이 비어서';
+      if (r.ca === r.cb) parts.push(missing + why + ' 반반(50%)');
+      else parts.push(missing + why + ' 5개로 보고, ' + likerPart());
+    } else if (r.ca === r.cb) parts.push('둘이 ' + josa(c.name, '을', '를') + ' 비슷하게 생각해서 반반(50%)');
+    else parts.push(likerPart());
+    if (Math.abs(r.adj) >= 0.005) { const behind = r.diff > 0 ? 'A' : 'B'; parts.push(nameOf(s, behind) + ': ' + Math.abs(r.diff) + '점 뒤라 +' + Math.round(Math.abs(r.adj) * 100) + '%p'); }
+    if (r.clampLow || r.clampHigh) parts.push('한쪽으로 너무 몰리지 않게 ' + (r.clampHigh ? 85 : 15) + '%에서 멈춤');
+    const pw = who === 'A' ? pct(r.pA) : 100 - pct(r.pA);
+    return parts.join(' · ') + ' → ' + nameOf(s, who) + ' ' + pw + '%';
+  }
+  // Runs every due-but-missing draw up to now. Mutates s. Returns {added:[keys], changed:boolean}.
+  function processDrawsOf(s, now) {
+    const today = dateStr(now); const ready = timeStr(now) >= (s.drawTime || '08:00');
+    const lastDate = ready ? today : addDays(today, -1);
+    const cs = choresOf(s); const added = [];
+    if (!s.draws) s.draws = {};
+    let start = s.lastProcessed ? addDays(s.lastProcessed, 1) : null;
+    // a capsule added or re-scheduled after today's draw still gets today's draw
+    for (const c of cs) { const st = (c.createdDate && c.createdDate > c.startDate) ? c.createdDate : c.startDate; if (!s.lastProcessed || st >= s.lastProcessed) { if (!start || st < start) start = st; } }
+    if (!start) start = lastDate;
+    if (daysBetween(start, lastDate) > 800) start = addDays(lastDate, -800);
+    for (let d = start; d <= lastDate; d = addDays(d, 1)) {
+      const scores = scoresBeforeOf(s, d);
+      for (const c of cs) {
+        if (!isDue(c, d)) continue; const k = drawKey(d, c.id); if (s.draws[k]) continue;
+        const r = calcProbOf(s, c, scores);
+        const rnd = seededRandom(s.seed + '|' + d + '|' + c.id)();
+        const who = rnd < r.pA ? 'A' : 'B';
+        const points = 11 - coinsOf(s, who, c.id);
+        s.draws[k] = { date: d, choreId: c.id, choreName: c.name, icon: c.icon, who, pA: r.pA, base: r.base, adj: r.adj, points, neutral: r.neutral, clamp: r.clampLow || r.clampHigh, reason: reasonTextOf(s, c, r, who), done: false, cheers: 0, ts: Date.now() + added.length };
+        added.push(k);
+      }
+    }
+    let changed = added.length > 0;
+    if (s.lastProcessed !== lastDate && lastDate >= (s.lastProcessed || '')) { s.lastProcessed = lastDate; changed = true; }
+    return { added, changed };
+  }
+  // convenience wrappers on the live state
+  const chores = () => choresOf(state);
+  const playerName = (p) => nameOf(state, p);
+  const walletValid = (p) => walletValidOf(state, p);
+  const scoresAll = () => scoresAllOf(state);
+  const calcProb = (c, sc) => calcProbOf(state, c, sc);
+  function moodFor(p) {
+    if (doneFlash[p] > Date.now()) return 'done';
+    const s = scoresAll(); const diff = s[other(p)] - s[p];
+    if (diff >= 7) return 'sleepy'; if (diff >= 3) return 'pout'; if (diff <= -3) return 'proud'; return 'calm';
+  }
+  const LINES = {
+    sleepy: ['요즘 너무 편했나… 쿨쿨', '하암… 내 차례 언제지'],
+    pout: ['다음 캡슐은 내 거야', '이번엔 내 차례였는데'],
+    calm: ['지금 딱 공평하네', '오늘도 사이좋게'],
+    proud: ['오늘도 열일 완료!', '내가 좀 했지? 같이 쉬자'],
+    done: ['다 했다! 이제 쉬자', '캡슐 처리 완료!'],
+  };
+  function lineFor(p, mood) { const arr = LINES[mood]; const n = daysBetween('2026-01-01', dateStr(new Date())) + (p === 'A' ? 0 : 1); return arr[((n % arr.length) + arr.length) % arr.length]; }
+
+  // ---------- character ----------
+  function charSVG(p, mood, pl) {
+    const base = defaultPlayer(p);
+    pl = Object.assign(base, (state && state.players && state.players[p]) || {}, pl || {});
+    const nm = pl.name || (p === 'A' ? '첫째' : '둘째');
+    const shirt = pl.topColor, hairC = pl.hairColor, hair = pl.hair, skin = pl.skin, botC = pl.bottomColor;
+    const top = pl.top, bottom = top === 'dress' ? 'dress' : pl.bottom, acc = pl.acc;
+    const L = 'stroke="var(--line)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
+    const F = 'stroke="var(--face)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
+    let arms, eyes, brows, mouth, extra = '', cheeks = '';
+    switch (mood) {
+      case 'sleepy':
+        arms = '<path d="M34 70 L28 96" fill="none" ' + L + '/><path d="M66 70 L72 96" fill="none" ' + L + '/>';
+        eyes = '<path d="M40 40 q4 4 8 0" fill="none" ' + L + '/><path d="M52 40 q4 4 8 0" fill="none" ' + L + '/>';
+        brows = '<path d="M39 33 l9 1" fill="none" ' + L + '/><path d="M61 33 l-9 1" fill="none" ' + L + '/>';
+        mouth = '<path d="M46 50 h8" fill="none" ' + L + '/>';
+        extra = '<text class="zz" x="76" y="22" font-size="13" fill="var(--muted)" font-family="var(--font)">z</text><text class="zz" x="84" y="12" font-size="10" fill="var(--muted)" font-family="var(--font)" style="animation-delay:.8s">z</text>';
+        break;
+      case 'pout':
+        arms = '<path d="M34 70 Q50 84 66 72" fill="none" ' + L + '/><path d="M66 70 Q50 90 34 76" fill="none" ' + L + '/>';
+        eyes = '<circle cx="42" cy="40" r="2.6" fill="var(--line)"/><circle cx="54" cy="40" r="2.6" fill="var(--line)"/>';
+        brows = '<path d="M39 34 l9 -2" fill="none" ' + L + '/><path d="M61 32 l-9 2" fill="none" ' + L + '/>';
+        mouth = '<path d="M45 51 q5 -4 10 0" fill="none" ' + L + '/>';
+        cheeks = '<circle cx="37" cy="47" r="3.5" fill="#E8858C" opacity=".5"/><circle cx="63" cy="47" r="3.5" fill="#E8858C" opacity=".5"/>';
+        break;
+      case 'proud':
+        arms = '<path d="M34 70 L24 92" fill="none" ' + L + '/><path d="M66 68 L78 46" fill="none" ' + L + '/>';
+        eyes = '<circle cx="44" cy="40" r="2.8" fill="var(--line)"/><circle cx="56" cy="40" r="2.8" fill="var(--line)"/><circle cx="45" cy="39" r=".9" fill="#fff"/><circle cx="57" cy="39" r=".9" fill="#fff"/>';
+        brows = '<path d="M40 33 l8 -1" fill="none" ' + L + '/><path d="M60 32 l-8 0" fill="none" ' + L + '/>';
+        mouth = '<path d="M44 48 q6 8 12 0" fill="none" ' + L + '/>';
+        extra = '<path class="spark" d="M84 20 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="var(--gold)"/><path class="spark s2" d="M12 30 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z" fill="var(--gold)"/>';
+        break;
+      case 'done':
+        arms = '<path d="M34 68 L22 46" fill="none" ' + L + '/><path d="M66 68 L78 46" fill="none" ' + L + '/>';
+        eyes = '<path d="M40 41 q4 -5 8 0" fill="none" ' + L + '/><path d="M52 41 q4 -5 8 0" fill="none" ' + L + '/>';
+        brows = '<path d="M39 32 l9 -2" fill="none" ' + L + '/><path d="M61 30 l-9 2" fill="none" ' + L + '/>';
+        mouth = '<ellipse cx="50" cy="50" rx="3.5" ry="4" fill="var(--line)"/>';
+        extra = '<path d="M74 36 q3 5 0 8 q-3 -3 0 -8z" fill="#7FB6E8"/>';
+        break;
+      default:
+        arms = '<path d="M34 70 L30 96" fill="none" ' + L + '/><path d="M66 70 L70 96" fill="none" ' + L + '/>';
+        eyes = '<circle cx="44" cy="40" r="2.6" fill="var(--line)"/><circle cx="56" cy="40" r="2.6" fill="var(--line)"/>';
+        brows = '<path d="M40 33 h8" fill="none" ' + L + '/><path d="M52 33 h8" fill="none" ' + L + '/>';
+        mouth = '<path d="M45 49 q5 4 10 0" fill="none" ' + L + '/>';
+    }
+    const H = 'fill="' + hairC + '" ' + L;
+    const hairFront = {
+      bob: '<path d="M26 44 V34 a24 24 0 0 1 48 0 V44 q0 -8 -6 -12 q-10 4 -20 -4 q-6 8 -16 4 q-6 4 -6 12z" ' + H + '/>',
+      long: '<path d="M26 44 V34 a24 24 0 0 1 48 0 V44 q0 -8 -6 -12 q-10 4 -20 -4 q-6 8 -16 4 q-6 4 -6 12z" ' + H + '/>',
+      tie: '<path d="M28 36 a22 22 0 0 1 44 0 q-10 -6 -22 -6 q-12 0 -22 6z" ' + H + '/><circle cx="74" cy="30" r="7" ' + H + '/>',
+      bun: '<path d="M28 36 a22 22 0 0 1 44 0 q-10 -6 -22 -6 q-12 0 -22 6z" ' + H + '/><circle cx="50" cy="15" r="7" ' + H + '/>',
+      curly: '<path d="M27 38 q-4 -10 6 -12 q0 -10 10 -8 q4 -8 12 -2 q8 -6 12 2 q10 -2 8 10 q6 4 2 10 q-10 -8 -24 -8 q-14 0 -26 8z" ' + H + '/>',
+      short: '<path d="M28 36 a22 22 0 0 1 44 0 q-6 -4 -12 -2 l-4 -6 l-4 6 l-6 -4 l-4 6 q-8 -4 -14 0z" ' + H + '/>',
+      buzz: '<path d="M29 33 a21 21 0 0 1 42 0 q-21 -5 -42 0z" ' + H + '/>',
+    };
+    const hairBack = hair === 'long' ? '<path d="M27 40 q-3 28 1 46 h44 q4 -18 1 -46 z" ' + H + '/>' : '';
+    // legs + bottoms
+    let legs;
+    if (bottom === 'pants') legs = '<rect x="36" y="98" width="11" height="22" rx="4" fill="' + botC + '" ' + L + '/><rect x="53" y="98" width="11" height="22" rx="4" fill="' + botC + '" ' + L + '/>';
+    else if (bottom === 'shorts') legs = '<rect x="38" y="104" width="8" height="16" rx="3" fill="' + skin + '" ' + L + '/><rect x="54" y="104" width="8" height="16" rx="3" fill="' + skin + '" ' + L + '/><rect x="35" y="96" width="13" height="14" rx="4" fill="' + botC + '" ' + L + '/><rect x="52" y="96" width="13" height="14" rx="4" fill="' + botC + '" ' + L + '/>';
+    else legs = '<rect x="38" y="100" width="8" height="20" rx="3" fill="' + skin + '" ' + L + '/><rect x="54" y="100" width="8" height="20" rx="3" fill="' + skin + '" ' + L + '/>' + (bottom === 'skirt' ? '<path d="M31 94 h38 l5 18 h-48 z" fill="' + botC + '" ' + L + '/>' : '');
+    const shoes = '<ellipse cx="41" cy="121" rx="8" ry="4" fill="var(--line)"/><ellipse cx="59" cy="121" rx="8" ry="4" fill="var(--line)"/>';
+    // tops
+    let topSvg;
+    if (top === 'dress') topSvg = '<path d="M35 62 h30 q4 0 5 4 l6 46 h-52 l6 -46 q1 -4 5 -4z" fill="' + shirt + '" ' + L + '/><path d="M44 62 l6 6 l6 -6" fill="none" ' + L + '/>';
+    else {
+      topSvg = '<rect x="30" y="62" width="40" height="40" rx="12" fill="' + shirt + '" ' + L + '/>';
+      if (top === 'tee') topSvg += '<path d="M44 62 l6 6 l6 -6" fill="none" ' + L + '/>';
+      else if (top === 'hoodie') topSvg += '<rect x="40" y="84" width="20" height="12" rx="4" fill="none" ' + L + '/><path d="M45 64 v9 M55 64 v9" fill="none" ' + L + '/>';
+      else if (top === 'collar') topSvg += '<path d="M41 62 l9 9 l9 -9" fill="none" ' + L + '/><path d="M50 71 v29" fill="none" ' + L + '/><circle cx="50" cy="80" r="1.6" fill="var(--line)"/><circle cx="50" cy="90" r="1.6" fill="var(--line)"/>';
+      else if (top === 'stripe') topSvg += '<path d="M31 74 h38 M31 84 h38 M31 94 h38" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="3"/><path d="M44 62 l6 6 l6 -6" fill="none" ' + L + '/>';
+    }
+    const hood = top === 'hoodie' ? '<path d="M26 66 q-2 -44 24 -46 q26 2 24 46 z" fill="' + shirt + '" ' + L + '/>' : '';
+    // accessories
+    let accSvg = '';
+    if (acc === 'glasses') accSvg = '<circle cx="44" cy="40" r="6.5" fill="none" ' + F.replace('2.2', '1.8') + '/><circle cx="56" cy="40" r="6.5" fill="none" ' + F.replace('2.2', '1.8') + '/><path d="M50.5 40 h-1" ' + F + '/>';
+    else if (acc === 'cap') accSvg = '<path d="M27 32 a23 23 0 0 1 46 0 z" fill="' + botC + '" ' + L + '/><rect x="20" y="30" width="42" height="6" rx="3" fill="' + botC + '" ' + L + '/>';
+    else if (acc === 'band') accSvg = '<path d="M29 32 a22 22 0 0 1 42 0" fill="none" stroke="' + shirt + '" stroke-width="5" stroke-linecap="round"/><path d="M29 32 a22 22 0 0 1 42 0" fill="none" stroke="var(--line)" stroke-width="1" />';
+    const moodKo = { sleepy: '졸린 표정', pout: '삐진 표정', calm: '편안한 표정', proud: '뿌듯한 표정', done: '다 했다는 표정' }[mood];
+    return '<svg class="char ' + mood + '" viewBox="0 0 100 130" role="img" aria-label="' + esc(nm) + ' — ' + moodKo + '">' + extra +
+      '<g class="body">' + hairBack + hood + legs + shoes + arms + topSvg +
+      '<circle cx="50" cy="40" r="22" fill="' + skin + '" ' + F + '/>' +
+      (hairFront[hair] || hairFront.short) + cheeks + (eyes + brows + mouth).split('var(--line)').join('var(--face)') + accSvg +
+      '</g></svg>';
+  }
+  // outfit editor shared by onboarding (ctx 'o0'/'o1') and settings (ctx 'A'/'B')
+  function outfitEditor(ctx, pl) {
+    const chips = (field, map) => '<div class="chips">' + Object.keys(map).map((k) => '<button type="button" class="chip' + (pl[field] === k ? ' on' : '') + '" aria-pressed="' + (pl[field] === k) + '" data-fit="' + ctx + ':' + field + ':' + k + '">' + map[k] + '</button>').join('') + '</div>';
+    const swatches = (field, colors, names) => '<div class="row" style="gap:6px">' + colors.map((c) => '<button type="button" class="swatch' + (pl[field] === c ? ' on' : '') + '" aria-pressed="' + (pl[field] === c) + '" style="background:' + c + '" data-fit="' + ctx + ':' + field + ':' + c + '" aria-label="' + (names[c] || c) + '"></button>').join('') + '</div>';
+    const row = (label, body) => '<div class="field"><label>' + label + '</label>' + body + '</div>';
+    return '<div style="display:flex;flex-direction:column;gap:10px">' +
+      row('피부', swatches('skin', SKINS, SKIN_NAMES)) +
+      row('머리 모양', chips('hair', HAIRS)) + row('머리색', swatches('hairColor', HAIR_COLORS, HAIR_COLOR_NAMES)) +
+      row('상의', chips('top', TOPS)) + row('상의 색', swatches('topColor', TOP_COLORS, COLOR_NAMES)) +
+      (pl.top === 'dress' ? '' : row('하의', chips('bottom', BOTTOMS)) + row('하의 색', swatches('bottomColor', BOTTOM_COLORS, COLOR_NAMES))) +
+      row('소품', chips('acc', ACCS)) +
+      '<button type="button" class="btn sm" data-fit-random="' + ctx + '" style="align-self:flex-start">랜덤 코디</button></div>';
+  }
+
+  // ---------- machine ----------
+  const MARBLE_POS = [[48, 100], [66, 100], [84, 100], [102, 100], [120, 100], [138, 100], [57, 85], [75, 85], [93, 85], [111, 85], [129, 85], [66, 70], [84, 70], [102, 70], [120, 70], [75, 55], [93, 55], [111, 55], [84, 40], [102, 40]];
+  function machineSVG(pA, lines, opts) {
+    opts = opts || {};
+    const nA = Math.round(clamp(pA, 0, 1) * 20);
+    const colors = []; for (let i = 0; i < 20; i++) colors.push(i < nA ? 'var(--a)' : 'var(--b)');
+    const rnd = seededRandom('marbles|' + (state ? state.seed : 'x') + '|' + (opts.key || ''));
+    for (let i = colors.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = colors[i]; colors[i] = colors[j]; colors[j] = t; }
+    const marbles = MARBLE_POS.map((p, i) => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="8" fill="' + colors[i] + '" stroke="var(--line)" stroke-width="1.5"/>').join('');
+    const L = 'stroke="var(--line)" stroke-width="2.5"';
+    const outlet = (opts.capsules || []).map((c, i) => '<g transform="translate(' + (50 + i * 32) + ' 214)"><path d="M0 14 a14 14 0 0 1 28 0 z" fill="' + (c === 'A' ? 'var(--a)' : 'var(--b)') + '" stroke="var(--line)" stroke-width="2"/><path d="M0 14 a14 14 0 0 0 28 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><line x1="0" y1="14" x2="28" y2="14" stroke="var(--line)" stroke-width="1.5"/></g>').join('');
+    const textW = (str, fs) => { let w = 0; for (const ch of str) w += /[가-힣ㄱ-ㅎ]/.test(ch) ? fs : /[0-9%]/.test(ch) ? fs * 0.62 : fs * 0.4; return w; };
+    const dispText = (str, y, fs) => '<text x="93" y="' + y + '" font-size="' + fs + '" font-weight="700" text-anchor="middle" fill="var(--bg)" font-family="var(--font)"' + (textW(str, fs) > 104 ? ' textLength="104" lengthAdjust="spacingAndGlyphs"' : '') + '>' + esc(str) + '</text>';
+    const text = lines.length === 1 ? dispText(lines[0], 173, 14) : dispText(lines[0], 165, 12) + dispText(lines[1], 180, 12);
+    return '<svg class="machine' + (opts.cls ? ' ' + opts.cls : '') + '" viewBox="0 0 186 262" role="img" aria-label="캡슐 뽑기 기계. ' + esc(lines.join(' ')) + '">' +
+      '<rect x="18" y="248" width="150" height="12" rx="4" fill="var(--line)"/>' +
+      '<rect x="26" y="120" width="134" height="132" rx="18" fill="var(--red)" ' + L + '/>' +
+      '<rect x="36" y="130" width="114" height="10" rx="5" fill="#FFFFFF" opacity="0.25"/>' +
+      '<rect x="14" y="112" width="158" height="16" rx="8" fill="var(--line)"/>' +
+      '<g class="dome"><path d="M22 112 a71 71 0 0 1 142 0 z" fill="var(--glass)" ' + L + '/>' +
+      '<ellipse cx="60" cy="58" rx="16" ry="8" fill="#FFFFFF" opacity="0.6" transform="rotate(-30 60 58)"/>' +
+      '<g class="marbles">' + marbles + '</g></g>' +
+      '<rect x="36" y="150" width="114" height="36" rx="8" fill="var(--ink)"/>' + text +
+      '<g class="handle"><circle cx="152" cy="202" r="12" fill="var(--mint)" ' + L + '/><rect x="150" y="186" width="4" height="12" rx="2" fill="var(--line)"/><circle cx="152" cy="186" r="4" fill="var(--line)"/></g>' +
+      '<path d="M44 212 h70 a4 4 0 0 1 4 4 v16 a4 4 0 0 1 -4 4 h-70 a4 4 0 0 1 -4 -4 v-16 a4 4 0 0 1 4 -4 z" fill="var(--line)"/>' +
+      '<g class="drop"><circle cx="79" cy="228" r="9" fill="' + (opts.dropColor || 'var(--gold)') + '" stroke="var(--line)" stroke-width="2"/></g>' +
+      outlet + '</svg>';
+  }
+
+  // ---------- storage ----------
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { } }
+  function loadLocal() { try { const s = lsGet(LOCAL_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function roleKey() { return ROLE_KEY + (store.code || 'local'); }
+  // Apply fn to the latest state atomically. fn(s) mutates s (s may be null) and returns {write, state, ...}.
+  async function mutate(fn) {
+    if (store.mode === 'fb') {
+      return store.db.runTransaction(async (tx) => {
+        const snap = await tx.get(store.ref);
+        const s = snap.exists ? clone(snap.data()) : null;
+        const r = fn(s);
+        if (r && r.write) { r.state.updatedAt = Date.now(); tx.set(store.ref, r.state); }
+        return r;
+      });
+    }
+    const r = fn(state);
+    if (r && r.write) { r.state.updatedAt = Date.now(); state = r.state; lsSet(LOCAL_KEY, JSON.stringify(state)); }
+    return r;
+  }
+  function withState(edit) { return mutate((s) => { if (!s) return { write: false }; edit(s); return { write: true, state: s }; }); }
+  async function runDraws() {
+    if (!state || busy) return;
+    const probe = clone(state); const pr = processDrawsOf(probe, new Date());
+    if (!pr.changed) return;
+    busy = true;
+    try {
+      const r = await mutate((s) => { if (!s) return { write: false, added: [] }; const x = processDrawsOf(s, new Date()); return { write: x.changed, state: s, added: x.added }; });
+      if (store.mode !== 'fb') afterStateChange();
+      const today = dateStr(new Date());
+      const todays = (r.added || []).filter((k) => k.startsWith(today + '_'));
+      if (todays.length && !(state && state.quiet) && !(reveal && reveal.current)) { reveal = { queue: todays, current: null, phase: null }; stepReveal(); }
+      else if ((r.added || []).length && !todays.length) toast('지난 추첨 ' + r.added.length + '건을 정리했어요');
+    } catch (e) { store.error = e; toast('저장소에 연결하지 못했어요'); }
+    finally { busy = false; }
+    render();
+  }
+  function afterStateChange() {
+    resolveRole(); render();
+  }
+  function resolveRole() {
+    if (!state) { me = null; return; }
+    if (me === 'A' || me === 'B') return;                 // already chosen on this device (survives blocked storage)
+    const r = lsGet(roleKey()); me = (r === 'A' || r === 'B') ? r : null;
+  }
+  function setRole(r) { me = r; lsSet(roleKey(), r); render(); if (reveal && !reveal.current) stepReveal(); }
+  function canReveal() { return !!(state && me && route === 'today'); }
+  function stepReveal() {
+    if (!reveal) return;
+    if (!canReveal()) { reveal.current = null; reveal.phase = null; return; }   // resumes when the today screen is visible
+    if (!reveal.queue.length) { reveal = null; render(); return; }
+    reveal.current = reveal.queue.shift(); reveal.phase = 'shake'; render();
+    setTimeout(() => { if (!reveal || !reveal.current) return; reveal.phase = 'show'; render(); const r = state && state.draws && state.draws[reveal.current]; const lv = $('#live'); if (lv && r) lv.textContent = '오늘 ' + r.choreName + ' 담당은 ' + playerName(r.who) + ', ' + r.points + '점'; setTimeout(() => { if (!reveal) return; reveal.current = null; stepReveal(); }, 2600); }, 1300);
+  }
+  function connectRoom(code) {
+    store.code = code; lsSet(ROOM_KEY, code);
+    if (store.unsub) store.unsub();
+    store.ref = store.db.collection('rooms').doc(code);
+    loading = true; render();
+    store.unsub = store.ref.onSnapshot((snap) => {
+      state = snap.exists ? clone(snap.data()) : null;
+      if (reveal) { const d = (state && state.draws) || {}; reveal.queue = reveal.queue.filter((k) => d[k]); if (reveal.current && !d[reveal.current]) { reveal.current = null; if (!reveal.queue.length) reveal = null; } }
+      loading = false; store.error = null;
+      resolveRole(); render();
+      if (state) runDraws();
+    }, (err) => { store.error = err; loading = false; render(); });
+  }
+  function leaveRoom() { if (store.unsub) store.unsub(); store.unsub = null; store.ref = null; store.code = null; lsSet(ROOM_KEY, null); state = null; me = null; reveal = null; roomScreen = 'pick'; route = 'today'; render(); }
+  async function wipe() {
+    if (store.mode === 'fb' && store.ref) { try { await store.ref.delete(); } catch (e) { } lsSet(roleKey(), null); state = null; me = null; onb = { step: 1, draft: null }; reveal = null; route = 'today'; render(); return; }
+    lsSet(LOCAL_KEY, null); lsSet(roleKey(), null); state = null; me = null; onb = { step: 1, draft: null }; reveal = null; route = 'today'; render();
+  }
+  function init() {
+    const params = new URLSearchParams(location.search);
+    const roomParam = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (roomParam) { lsSet(ROOM_KEY, roomParam); history.replaceState(null, '', location.pathname); }
+    if (FIREBASE_CONFIG && window.firebase) {
+      try {
+        firebase.initializeApp(FIREBASE_CONFIG);
+        store.db = firebase.firestore(); store.mode = 'fb';
+        const code = lsGet(ROOM_KEY);
+        if (code) connectRoom(code); else { loading = false; roomScreen = 'pick'; render(); }
+      } catch (e) { store.mode = 'local'; store.error = e; }
+    }
+    if (store.mode === 'local') { state = loadLocal(); loading = false; resolveRole(); render(); if (state) runDraws(); }
+  }
+
+  // ---------- toast ----------
+  function toast(msg) { let t = $('#toast'); if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); } t.textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.remove(); }, 2600); const lv = $('#live'); if (lv) { lv.textContent = ''; setTimeout(() => { lv.textContent = msg; }, 50); } }
+
+  // ---------- render ----------
+  function render() {
+    const app = $('#app');
+    if (loading) { app.innerHTML = topbar(false) + '<main><div class="empty">기계를 켜는 중…</div></main>'; return; }
+    if (store.mode === 'fb' && !store.code) { app.innerHTML = topbar(false) + '<main>' + viewRoom() + '</main>'; bind(); return; }
+    if (store.error && !state) { app.innerHTML = topbar(false) + '<main><section class="card"><h2>저장소에 연결하지 못했어요</h2><p class="rule" style="margin-top:6px">인터넷 연결과 Firebase 설정(규칙 게시 여부)을 확인해 주세요.<br><span style="font-size:11px">' + esc(String(store.error && store.error.message || store.error)) + '</span></p><div class="row" style="margin-top:10px"><button class="btn" data-retry>다시 시도</button><button class="btn" data-leave-room>다른 방 코드 쓰기</button></div></section></main>'; bind(); return; }
+    if (!state) { app.innerHTML = topbar(false) + '<main>' + viewOnboarding() + '</main>'; bind(); return; }
+    if (!me) { app.innerHTML = topbar(false) + '<main>' + viewRolePick() + '</main>'; bind(); return; }
+    let body = '';
+    switch (route) {
+      case 'board': body = viewBoard(); break;
+      case 'wallet': body = viewWallet(); break;
+      case 'history': body = viewHistory(); break;
+      case 'settings': body = viewSettings(); break;
+      default: route = 'today'; body = viewToday();
+    }
+    app.innerHTML = topbar(true) + '<main>' + body + '</main>' + nav();
+    bind();
+  }
+  function nextCapsule() {
+    const today = dateStr(new Date()); const ready = timeStr(new Date()) >= (state.drawTime || '08:00');
+    const from = ready ? addDays(today, 1) : today; let best = null;
+    for (const c of chores()) { const d = nextDue(c, from); if (d && (!best || d < best.date)) best = { date: d, chores: [c] }; else if (d && best && d === best.date) best.chores.push(c); }
+    return best;
+  }
+  function topbar(full) {
+    const now = new Date();
+    let next = '';
+    if (full && state) { const nc = nextCapsule(); next = nc ? ('다음 추첨 ' + relDay(nc.date, dateStr(now)) + ' ' + fmtTime(state.drawTime || '08:00') + ' · ' + esc(nc.chores[0].name) + (nc.chores.length > 1 ? ' 외 ' + (nc.chores.length - 1) + '개' : '')) : '말판이 비었어요'; }
+    return '<header class="topbar"><div class="brand"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0z"/><rect x="3" y="12" width="18" height="8" rx="3"/><circle cx="12" cy="16" r="1.5" fill="currentColor"/></svg>달그락 뽑기통</div>' +
+      (full ? '<div class="next"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4z"/><path d="M10 21h4"/></svg><span>' + next + '</span></div><button class="iconbtn" data-go="settings" aria-label="설정"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button>' : '<div class="next"><span>' + fmtDate(dateStr(now), true) + '</span></div>') +
+      '</header>';
+  }
+  function nav() {
+    const t = (id, label, svg) => '<button class="tab' + (route === id ? ' on' : '') + '" data-go="' + id + '"' + (route === id ? ' aria-current="page"' : '') + '>' + svg + label + '</button>';
+    return '<nav class="nav" aria-label="주 메뉴"><div class="nav-inner">' +
+      t('today', '오늘', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0z"/><rect x="3" y="12" width="18" height="8" rx="3"/></svg>') +
+      t('board', '말판', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="3" y="7" width="5" height="10" rx="1.5"/><rect x="9.5" y="7" width="5" height="10" rx="1.5"/><rect x="16" y="7" width="5" height="10" rx="1.5"/></svg>') +
+      t('wallet', '동전 지갑', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>') +
+      t('history', '기록', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>') +
+      '</div></nav>';
+  }
+
+  // ----- room pick -----
+  function viewRoom() {
+    if (roomScreen === 'join') return '<section><h2 style="font-size:20px">방 코드로 들어가기</h2><p class="muted" style="font-size:13px">상대가 알려준 8자리 코드를 적어 주세요. 초대 링크로 열었다면 자동으로 들어가요.</p></section>' +
+      '<section class="card" style="display:flex;flex-direction:column;gap:10px"><div class="field"><label for="room-code">방 코드</label><input class="input code" id="room-code" autocapitalize="characters" autocomplete="off" maxlength="8" placeholder="ABCD2345" style="text-align:center"></div><div class="row nowrap"><button class="btn" data-room-pick>이전</button><button class="btn red grow" data-room-join>들어가기</button></div></section>';
+    return '<section><h2 style="font-size:20px">둘이 같은 기계를 보려면</h2><p class="muted" style="font-size:13px">한 사람이 방을 만들고, 다른 사람은 초대 링크나 방 코드로 들어와요. 같은 방이면 두 폰이 같은 추첨 결과를 봐요.</p></section>' +
+      '<section><button class="card" data-room-create style="text-align:left;width:100%"><div style="font-size:17px;font-weight:700">새 방 만들기</div><div class="muted" style="font-size:12px">우리 집 기계를 새로 켜요. 방 코드가 생겨요.</div></button>' +
+      '<button class="card" data-room-pick-join style="text-align:left;width:100%"><div style="font-size:17px;font-weight:700">방 코드로 들어가기</div><div class="muted" style="font-size:12px">상대가 이미 방을 만들었다면 여기로.</div></button></section>';
+  }
+
+  // ----- onboarding -----
+  function viewOnboarding() {
+    if (!onb.draft) onb.draft = { players: [defaultPlayer('A'), defaultPlayer('B')], chores: EXAMPLE_CHORES.map((c) => ({ ...c })), drawTime: '08:00' };
+    const d = onb.draft;
+    const steps = '<div class="onb-steps"><span class="' + (onb.step >= 1 ? 'on' : '') + '"></span><span class="' + (onb.step >= 2 ? 'on' : '') + '"></span></div>';
+    if (onb.step === 1) {
+      const person = (i) => {
+        const p = i === 0 ? 'A' : 'B'; const pl = d.players[i];
+        return '<div class="card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;gap:12px;align-items:center"><div style="width:96px;flex-shrink:0">' + charSVG(p, 'calm', pl) + '</div>' +
+          '<div class="field grow"><label for="onb-name-' + i + '">' + (i === 0 ? '첫째 사람' : '둘째 사람') + ' 이름</label><input class="input" id="onb-name-' + i + '" data-onb-name="' + i + '" value="' + esc(pl.name) + '" placeholder="' + (i === 0 ? '예: 지우' : '예: 하람') + '" maxlength="6"></div></div>' +
+          outfitEditor('o' + i, pl) + '</div>';
+      };
+      return steps + '<section><h2 style="font-size:20px">두 사람을 소개해 주세요</h2><p class="muted" style="font-size:13px">이름과 코디는 나중에 설정에서 언제든 바꿀 수 있어요.</p></section>' +
+        '<section>' + person(0) + person(1) + '</section>' +
+        '<section><button class="btn red" data-onb-next="2" style="min-height:50px">다음: 캡슐 넣기</button></section>';
+    }
+    const rows = d.chores.map((c, i) => '<div class="card flat" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div class="row nowrap" style="flex:1 1 100%"><button type="button" class="chip" data-onb-icon="' + i + '" aria-label="아이콘 바꾸기 (지금: ' + ICON_NAMES[c.icon] + ')">' + icon(c.icon, 18) + '</button><input class="input grow" aria-label="집안일 이름" data-onb-chore-name="' + i + '" value="' + esc(c.name) + '" placeholder="집안일 이름" maxlength="12"><button type="button" class="iconbtn" data-onb-remove="' + i + '" aria-label="삭제" style="margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div class="row nowrap" style="gap:10px"><span class="muted" style="font-size:12px;font-weight:700">돌아오는 주기</span><div class="stepper" aria-label="주기"><button type="button" data-onb-period="' + i + ':-1" aria-label="주기 줄이기" ' + (c.period <= 1 ? 'disabled' : '') + '>−</button><span class="v num wide">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span><button type="button" data-onb-period="' + i + ':1" aria-label="주기 늘리기" ' + (c.period >= 30 ? 'disabled' : '') + '>+</button></div></div></div>').join('');
+    return steps + '<section><h2 style="font-size:20px">기계에 넣을 캡슐</h2><p class="muted" style="font-size:13px">집안일 하나가 캡슐 하나예요. "돌아오는 주기"는 그 캡슐이 말판을 한 바퀴 도는 날수예요. 예시 세 개는 바꿔도 돼요.</p></section>' +
+      '<section>' + rows + '<button class="btn" data-onb-add>+ 캡슐 추가</button></section>' +
+      '<section class="card"><div class="field"><label for="onb-time">추첨 시각</label><input class="input" type="time" id="onb-time" data-onb-time value="' + esc(d.drawTime) + '"></div><p class="rule">이 시각이 지나고 처음 앱을 열면 그날 돌아온 캡슐이 떨어져요. 오늘 이 시각이 이미 지났으면 바로 첫 추첨이 돼요.<br>기계를 켠 뒤에는 각자 <b>동전 지갑</b>에서 싫은 일·괜찮은 일을 정해요. 채우기 전엔 모든 캡슐을 반반으로 뽑아요.</p></section>' +
+      '<section><div class="row nowrap"><button class="btn" data-onb-next="1">이전</button><button class="btn red grow" data-onb-start style="min-height:50px">기계 켜기</button></div></section>';
+  }
+  function viewRolePick() {
+    const b = (p) => '<button class="card" data-role="' + p + '" style="display:flex;align-items:center;gap:12px;text-align:left;width:100%"><div style="width:72px;flex-shrink:0">' + charSVG(p, 'calm') + '</div><div><div style="font-size:18px;font-weight:700">' + esc(playerName(p)) + '</div><div class="muted" style="font-size:12px">이 폰을 ' + esc(playerName(p)) + ' 폰으로 쓸게요</div></div></button>';
+    return '<section><h2 style="font-size:20px">당신은 누구예요?</h2><p class="muted" style="font-size:13px">이 폰에서 보는 사람을 골라요. 동전 지갑은 고른 사람 것만 보여요. 고른 다음 동전 지갑을 먼저 채워 주세요.</p></section><section>' + b('A') + b('B') + '</section>';
+  }
+
+  // ----- today -----
+  function viewToday() {
+    const now = new Date(); const today = dateStr(now); const ready = timeStr(now) >= (state.drawTime || '08:00');
+    const s = scoresAll(); const nc = nextCapsule();
+    const all = drawsOf(state);
+    const todays = all.filter((r) => r.date === today).sort((a, b) => a.ts - b.ts);
+    const hidden = new Set(reveal ? reveal.queue.concat(reveal.current ? [reveal.current] : []) : []);
+    const pending = all.filter((r) => r.date < today && !r.done && daysBetween(r.date, today) <= 14).sort((a, b) => b.date.localeCompare(a.date));
+    let lines = [], label = '', pAnext = 0.5, keyNext = 'none';
+    if (nc) { const r = calcProb(nc.chores[0], s); pAnext = r.pA; keyNext = nc.date + nc.chores[0].id; lines = [playerName('A') + ' ' + pct(r.pA) + '%', playerName('B') + ' ' + (100 - pct(r.pA)) + '%']; label = relDay(nc.date, today) + ' ' + fmtTime(state.drawTime || '08:00') + ' · ' + nc.chores[0].name + (nc.chores.length > 1 ? ' 외 ' + (nc.chores.length - 1) + '개' : ''); }
+    else { lines = ['캡슐을 넣어 주세요']; label = '말판이 비었어요'; }
+    let mcls = ''; let dropColor = null;
+    if (reveal && reveal.current && !(state.draws && state.draws[reveal.current])) reveal = null;
+    if (reveal && reveal.current) { const r = state.draws[reveal.current]; if (reveal.phase === 'shake') { mcls = 'shaking'; lines = ['달그락달그락…']; } else { mcls = 'dropping'; dropColor = r.who === 'A' ? 'var(--a)' : 'var(--b)'; lines = ['뽕!']; } }
+    const capsulesOut = todays.filter((r) => !hidden.has(drawKey(r.date, r.choreId))).slice(0, 3).map((r) => r.who);
+    const moodA = moodFor('A'), moodB = moodFor('B');
+    const player = (p, mood) => '<div class="player"><div class="bubble">' + esc(lineFor(p, mood)) + '</div>' + charSVG(p, mood) + '<div class="badge ' + p.toLowerCase() + ' num">' + esc(playerName(p)) + (playerName(p).length > 4 ? '<br>' : ' ') + s[p] + '점</div></div>';
+    const hero = '<section class="hero-wrap" id="hero"><div class="hero">' + player('A', moodA) +
+      '<div class="machine-wrap"><div class="machine-label">' + esc(label) + '</div>' + machineSVG(pAnext, lines, { cls: mcls, key: keyNext, capsules: capsulesOut, dropColor }) + '</div>' +
+      player('B', moodB) + '</div></section>';
+    let banner = '';
+    if (reveal && reveal.current) {
+      const r = state.draws[reveal.current];
+      if (reveal.phase === 'shake') banner = '<div class="result-banner"><div class="shout rattle">달그락달그락…</div><div class="muted" style="font-size:13px">' + esc(r.choreName) + ' 캡슐이 떨어지고 있어요</div></div>';
+      else banner = '<div class="result-banner"><div class="shout">뽕!</div><div class="big">오늘 ' + josa(esc(r.choreName), '은', '는') + ' <span class="who-' + r.who.toLowerCase() + '">' + esc(playerName(r.who)) + '</span>!</div><div class="muted" style="font-size:12px">' + esc(r.reason) + '</div></div>';
+    }
+    let todaySec;
+    const visible = todays.filter((r) => !hidden.has(drawKey(r.date, r.choreId)));
+    if (visible.length) todaySec = '<section><div class="sec-head"><h2>오늘 떨어진 캡슐 ' + todays.length + '개</h2><span class="sub">' + fmtDate(today, true) + '</span></div>' + visible.map(capsuleCard).join('') + '</section>';
+    else if (todays.length) todaySec = '';
+    else if (!chores().length) todaySec = '<section><div class="card soft empty">말판이 비었어요. 첫 캡슐을 올려볼까요?<br><br><button class="btn red" data-go="board">캡슐 추가</button></div></section>';
+    else if (!ready && chores().some((c) => isDue(c, today))) todaySec = '<section><div class="card soft empty">오늘 ' + fmtTime(state.drawTime || '08:00') + '에 캡슐 ' + chores().filter((c) => isDue(c, today)).length + '개가 떨어져요</div></section>';
+    else todaySec = '<section><div class="card soft empty">오늘은 떨어질 캡슐이 없어요. 둘 다 쉬는 날!</div></section>';
+    let notice = '';
+    const wsMe = walletStateOf(state, me), wsOther = walletStateOf(state, other(me));
+    if (wsMe !== 'ok') notice = '<section><div class="notice warn">' + icon('dish', 16) + '<div>' + (wsMe === 'stale' ? '캡슐 수가 바뀌어서 <b>동전 지갑</b>을 다시 맞춰야 해요. 맞추기 전엔 모든 캡슐을 5개씩 균등으로 봐요.' : '<b>동전 지갑</b>이 아직 안 채워졌어요. 채우기 전엔 모든 캡슐을 5개씩 균등으로 보고 추첨해요.') + ' <a href="#" data-go="wallet" style="font-weight:700">지갑 ' + (wsMe === 'stale' ? '맞추기' : '채우기') + '</a></div></div></section>';
+    else if (wsOther !== 'ok') notice = '<section><div class="notice">' + icon('dish', 16) + '<div>' + esc(playerName(other(me))) + '의 동전 지갑이 ' + (wsOther === 'stale' ? '아직 새 캡슐에 맞춰지지 않았어요' : '아직 비어 있어요') + '. 맞출 때까지는 그쪽 선호도를 5개씩 균등으로 봐요.</div></div></section>';
+    const pendingSec = pending.length ? '<section><div class="sec-head"><h2>아직 안 한 캡슐</h2><span class="sub">최근 2주</span></div>' + pending.map(capsuleCard).join('') + '</section>' : '';
+    const trackSec = '<section><div class="sec-head"><h2>다음에 떨어질 캡슐</h2><span class="sub">말판 트랙 · 가까운 순서</span></div>' + trackHTML(today, ready) + '</section>';
+    const lead = s.A === s.B ? null : (s.A > s.B ? 'A' : 'B'); const diff = Math.abs(s.A - s.B); const max = Math.max(10, s.A, s.B);
+    const scoreSec = '<section class="card">' +
+      '<div class="score-row"><span class="lbl">' + esc(playerName('A')) + '</span><div class="tube"><div style="width:' + (s.A / max * 100) + '%;background:var(--a)"></div></div><span class="num" style="width:30px;text-align:right">' + s.A + '</span></div>' +
+      '<div class="score-row" style="margin-top:6px"><span class="lbl">' + esc(playerName('B')) + '</span><div class="tube"><div style="width:' + (s.B / max * 100) + '%;background:var(--b)"></div></div><span class="num" style="width:30px;text-align:right">' + s.B + '</span></div>' +
+      '<div style="font-size:15px;font-weight:700;margin-top:8px">' + (lead ? josa(esc(playerName(lead)), '이', '가') + ' ' + diff + '점 앞서요' : '지금 딱 똑같아요') + '</div>' +
+      '<div class="muted" style="font-size:12px">' + (lead ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + Math.min(20, diff * 2) + '%p 올라가요' : '따라잡기 보정 없이 동전 비율대로만 뽑아요') + '</div>' +
+      '<div class="muted" style="font-size:11px;margin-top:4px">각자 모든 캡슐을 한 번씩 하면 두 사람 다 ' + (6 * chores().length) + '점이 돼요 · 동전 합이 같으니까요</div></section>';
+    return hero + (banner ? '<section>' + banner + '</section>' : '') + notice + todaySec + pendingSec + trackSec + scoreSec;
+  }
+  function capsuleCard(r) {
+    const k = drawKey(r.date, r.choreId); const mine = r.who === me; const today = dateStr(new Date());
+    const whoCls = r.who.toLowerCase();
+    const capSvg = '<svg class="cap-icon" viewBox="0 0 44 44" aria-hidden="true"><path d="M4 22 a18 18 0 0 1 36 0 z" fill="var(--' + whoCls + ')" stroke="var(--line)" stroke-width="2"/><path d="M4 22 a18 18 0 0 0 36 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(13 24) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[r.icon] || ICONS.dish) + '</g></svg>';
+    let action;
+    if (r.done) action = '<span class="pill mint">완료</span>';
+    else if (mine) action = '<button class="btn mint sm" data-done="' + esc(k) + '">다 했어요</button>';
+    else action = '<button class="btn sm" data-cheer="' + esc(k) + '">응원 꾹' + (r.cheers ? ' <span class="num">' + r.cheers + '</span>' : '') + '</button>';
+    const dateTag = r.date !== today ? '<span class="pill muted">' + fmtDate(r.date) + '</span>' : '';
+    return '<article class="card capsule-card' + (r.done ? ' done' : '') + '">' + capSvg + '<div class="info"><div class="title"><span>' + esc(r.choreName) + ' → <span class="who-' + whoCls + '">' + esc(playerName(r.who)) + '</span></span><span class="pill gold num">+' + r.points + '점</span>' + dateTag + '</div>' +
+      '<div class="pbar" aria-label="' + esc(playerName('A')) + ' ' + pct(r.pA) + '%, ' + esc(playerName('B')) + ' ' + (100 - pct(r.pA)) + '%">' + pbarInner(r.pA, r.base) + '</div>' +
+      '<div class="reason">' + esc(r.reason) + (r.cheers ? ' · 응원 ' + r.cheers + '번' : '') + '</div></div>' + action + '</article>';
+  }
+  function pbarInner(pA, base) {
+    if (base == null || Math.abs(pA - base) < 0.005) return '<div class="pa" style="width:' + (pA * 100) + '%"></div><div class="pb" style="width:' + ((1 - pA) * 100) + '%"></div>';
+    if (pA > base) return '<div class="pa" style="width:' + (base * 100) + '%"></div><div class="adj-a" style="width:' + ((pA - base) * 100) + '%"></div><div class="pb" style="width:' + ((1 - pA) * 100) + '%"></div>';
+    return '<div class="pa" style="width:' + (pA * 100) + '%"></div><div class="adj-b" style="width:' + ((base - pA) * 100) + '%"></div><div class="pb" style="width:' + ((1 - base) * 100) + '%"></div>';
+  }
+  function trackHTML(today, ready) {
+    const from = ready ? addDays(today, 1) : today;
+    const items = [];
+    for (const c of chores()) { const d = nextDue(c, from); if (d) items.push({ c, d }); }
+    items.sort((a, b) => a.d.localeCompare(b.d) || a.c.name.localeCompare(b.c.name));
+    if (!items.length) return '<div class="card soft empty">말판에 캡슐이 없어요</div>';
+    const s = scoresAll();
+    let html = '<div class="track"><div class="slot inlet">투입<br>구</div>';
+    let lastDay = -1;
+    items.slice(0, 8).forEach((it, idx) => {
+      const n = daysBetween(today, it.d);
+      if (lastDay >= 0 && n > lastDay + 1) html += '<div class="slot">' + (n - lastDay - 1) + '일 비움</div>';
+      const r = calcProb(it.c, s);
+      html += '<div class="slot cap' + (idx === 0 ? ' next' : '') + '"><span class="' + (idx === 0 ? 'wobble' : '') + '" style="display:inline-flex">' + capsuleMini(it.c.icon) + '</span><div class="n">' + esc(it.c.name) + '<small>' + relDay(it.d, today) + ' · ' + esc(playerName('A')) + ' ' + pct(r.pA) + '%</small></div></div>';
+      lastDay = n;
+    });
+    return html + '</div>';
+  }
+  function capsuleMini(ic) { return '<svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><path d="M4 20 a16 16 0 0 1 32 0 z" fill="var(--track)" stroke="var(--line)" stroke-width="2"/><path d="M4 20 a16 16 0 0 0 32 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(11 21) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[ic] || ICONS.dish) + '</g></svg>'; }
+
+  // ----- board -----
+  function viewBoard() {
+    const today = dateStr(new Date()); const ready = timeStr(new Date()) >= (state.drawTime || '08:00'); const from = ready ? addDays(today, 1) : today;
+    const s = scoresAll();
+    const list = chores().map((c) => {
+      if (editingChore === c.id) return choreForm(c);
+      const d = nextDue(c, from); const r = calcProb(c, s); const myCoins = walletValid(me) ? state.prefs[me][c.id] : null;
+      return '<article class="card capsule-card">' + '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center">' + capsuleMini(c.icon).replace('width="28" height="28"', 'width="40" height="40"') + '</span>' +
+        '<div class="info"><div class="title"><span>' + esc(c.name) + '</span><span class="pill">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span></div>' +
+        '<div class="reason">' + (d ? '다음 추첨 ' + relDay(d, today) + ' (' + fmtDate(d, true) + ')' : '') + (myCoins ? ' · 내 동전 ' + myCoins + '개 → 걸리면 +' + (11 - myCoins) + '점' : ' · 지갑을 채우면 점수가 보여요') + '</div>' +
+        '<div class="pbar" style="height:8px">' + pbarInner(r.pA, r.base) + '</div></div>' +
+        '<button class="btn sm" data-edit-chore="' + esc(c.id) + '">고치기</button></article>';
+    }).join('');
+    return '<section><div class="sec-head"><h2>말판 위 캡슐 ' + chores().length + '개</h2><span class="sub">캡슐 하나 = 집안일 하나</span></div>' + (list || '<div class="card soft empty">아직 캡슐이 없어요</div>') +
+      (addingChore ? choreForm(null) : '<button class="btn red" data-add-chore>+ 캡슐 추가</button>') + '</section>' +
+      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요(동전 수가 바뀌니까요).</p></section>';
+  }
+  function choreForm(c) {
+    const isNew = !c; const d = c || { name: '', icon: 'dish', period: 3, startDate: dateStr(new Date()) };
+    const icons = Object.keys(ICONS).map((k) => '<button type="button" class="chip' + (d.icon === k ? ' on' : '') + '" data-form-icon="' + k + '" aria-label="' + ICON_NAMES[k] + '">' + icon(k, 18) + '</button>').join('');
+    return '<div class="card" id="chore-form" data-chore-id="' + esc(c ? c.id : '') + '" style="display:flex;flex-direction:column;gap:10px">' +
+      '<div class="field"><label for="cf-name">집안일 이름</label><input class="input" id="cf-name" value="' + esc(d.name) + '" placeholder="예: 분리수거" maxlength="12"></div>' +
+      '<div class="field"><label>아이콘</label><div class="chips">' + icons + '</div><input type="hidden" id="cf-icon" value="' + esc(d.icon) + '"></div>' +
+      '<div class="row"><div class="field"><label for="cf-period">며칠마다</label><div class="stepper"><button type="button" data-step="cf-period:-1" aria-label="줄이기">−</button><input class="v num" id="cf-period" type="number" min="1" max="30" value="' + d.period + '" style="border:0;width:48px;background:transparent;text-align:center"><button type="button" data-step="cf-period:1" aria-label="늘리기">+</button></div></div>' +
+      '<div class="field grow"><label for="cf-start">첫 추첨 날</label><input class="input" type="date" id="cf-start" value="' + esc(d.startDate) + '" max="' + addDays(dateStr(new Date()), 365) + '"></div></div>' +
+      '<div class="row nowrap">' + (isNew ? '' : '<button class="btn" data-delete-chore="' + esc(c.id) + '" style="color:var(--red)">빼기</button>') + '<button class="btn" data-cancel-chore>취소</button><button class="btn mint grow" data-save-chore>' + (isNew ? '말판에 올리기' : '저장') + '</button></div></div>';
+  }
+
+  // ----- wallet -----
+  function viewWallet() {
+    const cs = chores(); const total = 5 * cs.length;
+    const prefs = (state.prefs && state.prefs[me]) || {};
+    if (!walletDraft) walletDraft = {};
+    for (const c of cs) if (!(walletDraft[c.id] >= 1 && walletDraft[c.id] <= 10)) walletDraft[c.id] = clamp(prefs[c.id] || 5, 1, 10);
+    for (const k of Object.keys(walletDraft)) if (!cs.some((c) => c.id === k)) delete walletDraft[k];
+    let used = 0; for (const c of cs) used += walletDraft[c.id] || 0;
+    const left = total - used;
+    const rows = cs.map((c) => {
+      const v = walletDraft[c.id]; const coins = []; for (let i = 1; i <= 10; i++) coins.push('<span class="coin' + (i <= v ? ' on' : '') + '"></span>');
+      return '<div class="card flat" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap"><span style="display:inline-flex">' + icon(c.icon, 20) + '</span><div class="grow"><div style="font-weight:700">' + esc(c.name) + '</div><div class="muted" style="font-size:11px">' + (v <= 3 ? '정말 싫어요' : v <= 5 ? '그냥 그래요' : v <= 7 ? '괜찮아요' : '해도 돼요') + ' · 걸리면 <b class="num">+' + (11 - v) + '점</b></div></div>' +
+        '<div class="stepper"><button type="button" data-coin="' + esc(c.id) + ':-1" aria-label="동전 빼기" ' + (v <= 1 ? 'disabled' : '') + '>−</button><span class="v num">' + v + '</span><button type="button" data-coin="' + esc(c.id) + ':1" aria-label="동전 넣기" ' + (v >= 10 || left <= 0 ? 'disabled' : '') + '>+</button></div></div>' +
+        '<div class="coinrow" aria-hidden="true">' + coins.join('') + '</div></div>';
+    }).join('');
+    const status = left === 0 ? '<span class="pill mint">동전을 다 썼어요 · 저장할 수 있어요</span>' : left > 0 ? '<span class="pill gold num">남은 동전 ' + left + '개 · 다 써야 저장돼요</span>' : '<span class="pill red num">동전을 ' + (-left) + '개 더 썼어요 · 그만큼 빼 주세요</span>';
+    return '<section><div class="sec-head"><h2>' + esc(playerName(me)) + '의 동전 지갑</h2><span class="sub num">' + used + ' / ' + total + '</span></div>' +
+      '<div class="notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div>이 화면은 ' + esc(playerName(other(me))) + '에게 안 보여요. 동전을 <b>많이</b> 넣은 일은 "그래도 괜찮은 일"이라 더 자주 걸리지만 점수는 작아요. <b>싫은 일엔 동전을 아끼면</b> 드물게 걸리고, 걸리면 점수가 커요.</div></div>' +
+      '<div>' + status + '</div>' + (rows || '<div class="card soft empty">말판에 캡슐이 없어요. 먼저 캡슐을 추가해 주세요.</div>') + '</section>' +
+      (cs.length ? '<section><div class="row nowrap"><button class="btn" data-wallet-even>똑같이 나누기</button><button class="btn mint grow" data-wallet-save ' + (left !== 0 ? 'disabled' : '') + ' style="min-height:50px">이대로 저장</button></div>' +
+        '<p class="rule">규칙: 동전은 집안일 수 × 5개(' + total + '개). 캡슐마다 1~10개, 남김 없이. 두 사람 동전 합이 같아서, 각자 모든 캡슐을 한 번씩 하면 두 사람 다 ' + (6 * cs.length) + '점이 돼요.</p></section>' : '');
+  }
+
+  // ----- history -----
+  function viewHistory() {
+    const all = drawsOf(state).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+    if (!all.length) return '<section><div class="card soft empty">아직 떨어진 캡슐이 없어요</div></section>';
+    const byDate = {}; for (const r of all) (byDate[r.date] = byDate[r.date] || []).push(r);
+    const month = dateStr(new Date()).slice(0, 7); const ms = { A: 0, B: 0 }, cnt = { A: 0, B: 0 };
+    for (const r of all) if (r.date.startsWith(month)) { ms[r.who] += r.points; cnt[r.who]++; }
+    const s = scoresAll();
+    const days = Object.keys(byDate).sort().reverse().slice(0, 60).map((d) => '<div class="hist-day"><div class="d">' + fmtDate(d, true) + '</div>' + byDate[d].map((r) => '<div class="hist-item"><span style="display:inline-flex;color:' + (r.who === 'A' ? 'var(--a)' : 'var(--b-text)') + '">' + icon(r.icon, 20) + '</span><div class="t"><div><b>' + esc(r.choreName) + '</b> → <span class="who-' + r.who.toLowerCase() + '">' + esc(playerName(r.who)) + '</span> <span class="num">+' + r.points + '점</span>' + (r.done ? ' <span class="pill mint">완료</span>' : '') + '</div><div class="r">' + esc(r.reason) + '</div></div></div>').join('') + '</div>').join('');
+    return '<section class="card"><h2>이번 달 영수증</h2>' +
+      '<div class="row" style="justify-content:space-between;margin-top:6px"><div><div class="muted" style="font-size:12px">' + esc(playerName('A')) + '</div><div class="num" style="font-size:22px;font-weight:700;color:var(--a)">' + ms.A + '점 <span style="font-size:12px;color:var(--muted)">캡슐 ' + cnt.A + '개</span></div></div><div style="text-align:right"><div class="muted" style="font-size:12px">' + esc(playerName('B')) + '</div><div class="num" style="font-size:22px;font-weight:700;color:var(--b-text)">' + ms.B + '점 <span style="font-size:12px;color:var(--muted)">캡슐 ' + cnt.B + '개</span></div></div></div>' +
+      '<p class="rule" style="margin-top:8px">누적 ' + s.A + ' : ' + s.B + ' · 두 사람 동전 합이 같아서, 캡슐이 한 바퀴씩 돌면 점수 차는 다시 좁혀져요.</p></section>' +
+      '<section class="card">' + days + '</section>';
+  }
+
+  // ----- settings -----
+  function viewSettings() {
+    const p = state.players;
+    const person = (k) => {
+      const open = fitOpen === k;
+      return '<div class="card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;gap:12px;align-items:center"><div style="width:76px;flex-shrink:0">' + charSVG(k, 'calm') + '</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div><button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button></div></div>' + (open ? outfitEditor(k, Object.assign(defaultPlayer(k), p[k])) : '') + '</div>';
+    };
+    const share = store.mode === 'fb'
+      ? '<section class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap" style="justify-content:space-between"><div><div class="muted" style="font-size:12px">우리 방 코드</div><div class="code">' + esc(store.code) + '</div></div><button class="btn sm" data-copy-invite>초대 링크 복사</button></div><p class="rule">상대 폰에서 초대 링크를 열거나 방 코드를 입력하면 같은 기계를 봐요. 두 폰이 같은 추첨 결과를 보고, 한쪽이 "다 했어요"를 누르면 바로 반영돼요.</p><button class="btn ghost sm" data-leave-room style="align-self:flex-start;color:var(--muted)">이 폰에서 방 나가기</button></section>'
+      : '<section class="card flat"><div style="font-weight:700">이 폰에만 저장되는 중</div><p class="rule">두 폰이 같은 결과를 보려면 파일 맨 위 FIREBASE_CONFIG에 Firebase 설정값을 넣어야 해요. 지금은 혼자 써보는 모드예요(역할 바꾸기로 두 사람 몫을 번갈아 볼 수 있어요).</p></section>';
+    return '<section><h2>설정</h2>' + person('A') + person('B') + '</section>' +
+      '<section class="card" style="display:flex;flex-direction:column;gap:10px"><div class="field"><label for="set-time">추첨 시각</label><input class="input" type="time" id="set-time" data-set-time value="' + esc(state.drawTime || '08:00') + '"></div>' +
+      '<label class="row nowrap" style="justify-content:space-between;min-height:44px"><span>조용한 아침 <span class="muted" style="font-size:12px">(추첨 연출 없이 결과만)</span></span><input type="checkbox" id="set-quiet" data-set-quiet ' + (state.quiet ? 'checked' : '') + ' style="width:22px;height:22px"></label>' +
+      '<div class="row nowrap" style="justify-content:space-between;gap:10px"><span>이 폰은 <b>' + esc(playerName(me)) + '</b> 폰이에요<br><span class="muted" style="font-size:11px">바꾸면 상대 동전 지갑이 보여요</span></span><button class="btn sm" data-switch-role style="flex-shrink:0">' + (switchArmed ? '정말요? 한 번 더' : josa(esc(playerName(other(me))), '으로', '로') + ' 바꾸기') + '</button></div></section>' +
+      share +
+      '<section class="card flat"><h2 style="margin-bottom:6px">규칙 한 장</h2><p class="rule">' +
+      '<b>1. 주기</b> — 캡슐은 자기 주기만큼 말판을 돌고, 돌아온 날 추첨 시각에 떨어져요.<br>' +
+      '<b>2. 동전 지갑</b> — 각자 동전 5×(캡슐 수)개를 1~10개씩 나눠 넣어요. 서로의 지갑은 안 보여요.<br>' +
+      '<b>3. 점수</b> — 걸리면 11 − 내 동전 수. 싫은 일(동전 1개)은 10점, 괜찮은 일(10개)은 1점.<br>' +
+      '<b>4. 확률</b> — 동전을 더 넣은 쪽이 더 잘 걸리고, 누적 점수가 뒤처진 쪽은 1점당 2%p(최대 20%p) 더 잘 걸려요. 15~85% 사이에서만 움직여요.<br>' +
+      '<b>5. 표정</b> — 상대보다 3점 뒤면 삐지고, 7점 뒤면 졸아요. 3점 앞서면 뿌듯해해요.</p></section>' +
+      '<section><button class="btn" data-reset style="color:var(--red)">' + (resetArmed ? '정말 전부 지울까요? 다시 누르면 지워져요' : '기계 초기화 (전부 지우기)') + '</button></section>';
+  }
+
+  // ---------- events ----------
+  function bind() {
+    const app = $('#app');
+    app.onclick = async (e) => {
+      const t = e.target.closest('[data-go],[data-role],[data-onb-next],[data-onb-start],[data-onb-add],[data-onb-remove],[data-onb-period],[data-onb-icon],[data-fit],[data-fit-random],[data-fit-toggle],[data-done],[data-cheer],[data-add-chore],[data-edit-chore],[data-cancel-chore],[data-save-chore],[data-delete-chore],[data-form-icon],[data-step],[data-coin],[data-wallet-even],[data-wallet-save],[data-switch-role],[data-reset],[data-room-create],[data-room-pick-join],[data-room-pick],[data-room-join],[data-copy-invite],[data-leave-room],[data-retry]');
+      if (!t) return;
+      const ds = t.dataset;
+      try {
+        if (ds.go !== undefined) { e.preventDefault(); go(ds.go); return; }
+        if (ds.role) { setRole(ds.role); return; }
+        // room
+        if (ds.roomCreate !== undefined) { connectRoom(makeCode()); return; }
+        if (ds.roomPickJoin !== undefined) { roomScreen = 'join'; render(); setTimeout(() => { const i = $('#room-code'); i && i.focus(); }, 0); return; }
+        if (ds.roomPick !== undefined) { roomScreen = 'pick'; render(); return; }
+        if (ds.roomJoin !== undefined) { const v = ($('#room-code').value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (v.length !== 8) { toast('방 코드는 8자예요'); return; } connectRoom(v); return; }
+        if (ds.copyInvite !== undefined) { const link = location.origin + location.pathname + '?room=' + store.code; try { await navigator.clipboard.writeText(link); toast('초대 링크를 복사했어요. 카톡으로 보내 주세요'); } catch (err) { prompt('이 링크를 복사해서 보내 주세요', link); } return; }
+        if (ds.leaveRoom !== undefined) { leaveRoom(); return; }
+        if (ds.retry !== undefined) { if (store.code) connectRoom(store.code); return; }
+        // onboarding
+        if (ds.onbNext) { readOnbInputs(); onb.step = Number(ds.onbNext); if (onb.step === 2 && !(onb.draft.players[0].name.trim() && onb.draft.players[1].name.trim())) { onb.step = 1; toast('두 사람 이름을 적어 주세요'); } render(); return; }
+        // outfit
+        if (ds.fit) { const [ctx, field, value] = ds.fit.split(':'); await applyFit(ctx, (pl) => { pl[field] = value; }); return; }
+        if (ds.fitRandom) { await applyFit(ds.fitRandom, (pl) => { randomOutfit(pl); }); return; }
+        if (ds.fitToggle) { fitOpen = fitOpen === ds.fitToggle ? null : ds.fitToggle; const names = readSettingsInputs(); if (Object.keys(names).length) { await withState((s) => { applyNames(s, names); }); if (store.mode !== 'fb') afterStateChange(); } render(); return; }
+        if (ds.onbAdd !== undefined) { readOnbInputs(); if (onb.draft.chores.length >= 12) { toast('캡슐은 12개까지만'); return; } onb.draft.chores.push({ name: '', icon: 'broom', period: 3 }); render(); setTimeout(() => { const ins = document.querySelectorAll('[data-onb-chore-name]'); ins[ins.length - 1] && ins[ins.length - 1].focus(); }, 0); return; }
+        if (ds.onbRemove) { readOnbInputs(); onb.draft.chores.splice(Number(ds.onbRemove), 1); render(); return; }
+        if (ds.onbPeriod) { const [i, dlt] = ds.onbPeriod.split(':'); readOnbInputs(); const c = onb.draft.chores[Number(i)]; c.period = clamp(c.period + Number(dlt), 1, 30); render(); return; }
+        if (ds.onbIcon) { readOnbInputs(); const keys = Object.keys(ICONS); const c = onb.draft.chores[Number(ds.onbIcon)]; c.icon = keys[(keys.indexOf(c.icon) + 1) % keys.length]; render(); return; }
+        if (ds.onbStart !== undefined) { readOnbInputs(); await startRoom(); return; }
+        // today
+        if (ds.done) { const k = ds.done; let pts = 0, who = null; await withState((s) => { const r = s.draws && s.draws[k]; if (r && !r.done) { r.done = true; r.doneAt = Date.now(); pts = r.points; who = r.who; } }); if (who) { doneFlash[who] = Date.now() + 3200; if (store.mode !== 'fb') afterStateChange(); setTimeout(render, 3300); toast('캡슐 처리 완료! +' + pts + '점은 이미 들어가 있어요'); } return; }
+        if (ds.cheer) { const k = ds.cheer; await withState((s) => { const r = s.draws && s.draws[k]; if (r) r.cheers = (r.cheers || 0) + 1; }); if (store.mode !== 'fb') afterStateChange(); hearts(); return; }
+        // board
+        if (ds.addChore !== undefined) { addingChore = true; editingChore = null; render(); return; }
+        if (ds.editChore) { editingChore = ds.editChore; addingChore = false; render(); return; }
+        if (ds.cancelChore !== undefined) { addingChore = false; editingChore = null; render(); return; }
+        if (ds.formIcon) { $('#cf-icon').value = ds.formIcon; document.querySelectorAll('[data-form-icon]').forEach((b) => b.classList.toggle('on', b.dataset.formIcon === ds.formIcon)); return; }
+        if (ds.step) { const [id, dlt] = ds.step.split(':'); const inp = document.getElementById(id); inp.value = clamp((Number(inp.value) || 1) + Number(dlt), 1, 30); return; }
+        if (ds.saveChore !== undefined) { await saveChoreForm(); return; }
+        if (ds.deleteChore) { const id = ds.deleteChore; await withState((s) => { s.chores = s.chores.filter((c) => c.id !== id); for (const p of ['A', 'B']) if (s.prefs && s.prefs[p]) delete s.prefs[p][id]; }); editingChore = null; walletDraft = null; if (store.mode !== 'fb') afterStateChange(); toast('캡슐을 뺐어요. 동전 지갑을 다시 채워 주세요'); return; }
+        // wallet
+        if (ds.coin) { const [id, dlt] = ds.coin.split(':'); walletDraft[id] = clamp((walletDraft[id] || 5) + Number(dlt), 1, 10); render(); return; }
+        if (ds.walletEven !== undefined) { for (const c of chores()) walletDraft[c.id] = 5; render(); return; }
+        if (ds.walletSave !== undefined) { const draft = { ...walletDraft }; const who = me; await withState((s) => { s.prefs = s.prefs || {}; s.prefs[who] = draft; }); if (store.mode !== 'fb') afterStateChange(); toast('지갑을 채웠어요. 다음 추첨부터 적용돼요'); return; }
+        // settings
+        if (ds.switchRole !== undefined) { if (!switchArmed) { switchArmed = true; render(); setTimeout(() => { switchArmed = false; if (route === 'settings') render(); }, 4000); return; } switchArmed = false; walletDraft = null; setRole(other(me)); toast('이제 이 폰은 ' + playerName(me) + ' 폰이에요'); return; }
+        if (ds.reset !== undefined) { if (!resetArmed) { resetArmed = true; render(); setTimeout(() => { resetArmed = false; if (route === 'settings') render(); }, 4000); return; } resetArmed = false; await wipe(); return; }
+      } catch (err) { console.error(err); toast('잠깐 문제가 생겼어요. 다시 눌러 주세요'); }
+    };
+    app.onchange = async (e) => {
+      const t = e.target; const ds = t.dataset;
+      try {
+        if (ds.onbTime !== undefined) { onb.draft.drawTime = t.value || '08:00'; return; }
+        if (ds.setTime !== undefined) { const v = t.value || '08:00'; await withState((s) => { s.drawTime = v; }); if (store.mode !== 'fb') afterStateChange(); return; }
+        if (ds.setQuiet !== undefined) { const v = t.checked; await withState((s) => { s.quiet = v; }); return; }
+        if (ds.setName !== undefined) { const v = t.value.trim(); const k = ds.setName; if (v) { await withState((s) => { s.players[k].name = v; }); if (store.mode !== 'fb') afterStateChange(); } return; }
+        if (ds.onbName !== undefined) readOnbInputs();
+      } catch (err) { console.error(err); toast('저장이 잠깐 안 됐어요'); }
+    };
+  }
+  async function applyFit(ctx, edit) {
+    if (ctx[0] === 'o') { readOnbInputs(); edit(onb.draft.players[Number(ctx[1])]); render(); return; }
+    const names = readSettingsInputs();
+    await withState((s) => { applyNames(s, names); s.players[ctx] = Object.assign(defaultPlayer(ctx), s.players[ctx]); edit(s.players[ctx]); });
+    if (store.mode !== 'fb') afterStateChange();
+  }
+  function readOnbInputs() {
+    document.querySelectorAll('[data-onb-name]').forEach((i) => { onb.draft.players[Number(i.dataset.onbName)].name = i.value; });
+    document.querySelectorAll('[data-onb-chore-name]').forEach((i) => { onb.draft.chores[Number(i.dataset.onbChoreName)].name = i.value; });
+    const tm = $('[data-onb-time]'); if (tm) onb.draft.drawTime = tm.value || '08:00';
+  }
+  function readSettingsInputs() { const o = {}; document.querySelectorAll('[data-set-name]').forEach((i) => { const v = i.value.trim(); if (v) o[i.dataset.setName] = v; }); return o; }
+  function applyNames(s, names) { for (const k in names) if (s.players[k]) s.players[k].name = names[k]; }
+  async function startRoom() {
+    const d = onb.draft; const today = dateStr(new Date());
+    const cs = d.chores.filter((c) => c.name.trim()).map((c) => ({ id: uid(), name: c.name.trim(), icon: c.icon, period: clamp(c.period, 1, 30), startDate: today, createdDate: today }));
+    if (!cs.length) { toast('캡슐을 하나 이상 넣어 주세요'); return; }
+    const pA = { ...d.players[0], name: d.players[0].name.trim() }, pB = { ...d.players[1], name: d.players[1].name.trim() };
+    const fresh = { v: 2, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, lastProcessed: null, quiet: false };
+    await mutate((s) => (s ? { write: false } : { write: true, state: fresh }));
+    if (store.mode !== 'fb') { me = null; afterStateChange(); runDraws(); }
+  }
+  async function saveChoreForm() {
+    const name = $('#cf-name').value.trim(); if (!name) { toast('이름을 적어 주세요'); return; }
+    const period = clamp(Number($('#cf-period').value) || 1, 1, 30); const start = $('#cf-start').value || dateStr(new Date()); const ic = $('#cf-icon').value;
+    const id = $('#chore-form').dataset.choreId; const today = dateStr(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || daysBetween(today, start) > 365) { toast('첫 추첨 날은 1년 안으로 골라 주세요'); return; }
+    await withState((s) => {
+      if (id) { const c = s.chores.find((x) => x.id === id); if (c) { const periodChanged = c.period !== period || c.startDate !== start; c.name = name; c.icon = ic; c.period = period; c.startDate = start; if (periodChanged) c.createdDate = (c.createdDate && c.createdDate > today) ? c.createdDate : today; } }
+      else s.chores.push({ id: uid(), name, icon: ic, period, startDate: start, createdDate: today });
+    });
+    addingChore = false; editingChore = null; walletDraft = null;
+    if (store.mode !== 'fb') afterStateChange();
+    toast(id ? '캡슐을 고쳤어요' : '캡슐을 올렸어요. 두 사람 모두 동전 지갑을 다시 채워 주세요');
+    runDraws();
+  }
+  function hearts() { const hero = $('#hero'); if (!hero) return; for (let i = 0; i < 5; i++) { const h = document.createElement('span'); h.className = 'heart'; h.textContent = '♥'; h.style.color = 'var(--red)'; h.style.left = (30 + Math.random() * 40) + '%'; h.style.top = '40%'; h.style.animationDelay = (i * 0.12) + 's'; hero.appendChild(h); setTimeout(() => h.remove(), 1800); } }
+  function go(r) { route = r; if (route !== 'wallet') walletDraft = null; addingChore = false; editingChore = null; resetArmed = false; switchArmed = false; fitOpen = null; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); if (reveal && !reveal.current) stepReveal(); }
+  setInterval(() => { if (state && me) runDraws(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state && me) runDraws(); });
+
+  init();
+})();
+</script>
+</body>
+</html>
