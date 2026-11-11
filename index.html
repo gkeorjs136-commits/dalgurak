@@ -284,10 +284,22 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     return o;
   }
   const EXAMPLE_CHORES = [
-    { name: '빨래(수건)', icon: 'towel', period: 5 },
-    { name: '설거지', icon: 'dish', period: 1 },
-    { name: '화장실 청소', icon: 'toilet', period: 7 },
+    { name: '빨래(수건)', icon: 'towel', period: 5, difficulty: 2, startIn: 0 },
+    { name: '설거지', icon: 'dish', period: 1, difficulty: 2, startIn: 0 },
+    { name: '화장실 청소', icon: 'toilet', period: 7, difficulty: 4, startIn: 0 },
   ];
+  // tokens: both start equal; completing a capsule earns (11 − partner's coins on it) × difficulty × 10; postponing costs difficulty × 100 and hands the capsule over
+  const START_TOKENS = 1000;
+  const TOKENS_PER_PP = 100;          // 100 tokens behind → +2%p on the next draw (max 20%p)
+  const DIFF_COLORS = { 1: '#5FBFA8', 2: '#7FB6E8', 3: '#F2C94C', 4: '#F5A742', 5: '#D1453A' };
+  const DIFF_NAMES = { 1: '아주 쉬움', 2: '쉬움', 3: '보통', 4: '힘듦', 5: '아주 힘듦' };
+  const choreDiff = (c) => clamp(Number(c && c.difficulty) || 3, 1, 5);
+  const ICON_KEYWORDS = [
+    ['dish', /설거지|그릇|식기|접시|컵/], ['towel', /수건|빨래|세탁|타월|건조/], ['laundry', /세탁기|빨래 돌리|돌리기|이불 빨/], ['toilet', /화장실|변기|욕실|세면|샤워/],
+    ['broom', /청소|바닥|걸레|먼지|빗자루|진공|돌돌이|정리/], ['trash', /쓰레기|분리수거|재활용|음쓰|음식물|버리/], ['pot', /요리|저녁|점심|아침|밥|국|반찬|식사|주방/],
+    ['plant', /화분|식물|물 주|물주|정원|꽃/], ['window', /창문|창틀|유리|방충망|블라인드/], ['bed', /침대|이불|베개|시트|침구/], ['cart', /장보기|마트|장 보|쇼핑|배달|택배/], ['dog', /강아지|고양이|산책|사료|반려|배변/],
+  ];
+  function suggestIcon(name) { for (const [ic, re] of ICON_KEYWORDS) if (re.test(name || '')) return ic; return null; }
   const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
   const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   const ICONS = {
@@ -348,6 +360,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   let busy = false;
   let switchArmed = false;
   let fitOpen = null;        // which player's outfit editor is open in settings
+  let giftOpen = false;
 
   // ---------- rules (pure: work on the state object passed in) ----------
   function choresOf(s) { return (s && s.chores) || []; }
@@ -375,13 +388,14 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function walletStateOf(s, p) { if (walletValidOf(s, p)) return 'ok'; const prefs = (s.prefs && s.prefs[p]) || {}; return Object.keys(prefs).length ? 'stale' : 'empty'; }
   function drawKey(d, choreId) { return d + '_' + choreId; }
   function drawsOf(s) { return Object.values((s && s.draws) || {}); }
-  function scoresBeforeOf(s, d) { const r = { A: 0, B: 0 }; for (const x of drawsOf(s)) { if (x.date < d) r[x.who] += x.points; } return r; }
-  function scoresAllOf(s) { const r = { A: 0, B: 0 }; for (const x of drawsOf(s)) r[x.who] += x.points; return r; }
-  function calcProbOf(s, c, scores) {
+  function tokensOf(s) { const t = (s && s.tokens) || {}; return { A: typeof t.A === 'number' ? t.A : START_TOKENS, B: typeof t.B === 'number' ? t.B : START_TOKENS }; }
+  function rewardOf(s, who, choreId, difficulty) { return (11 - coinsOf(s, other(who), choreId)) * clamp(Number(difficulty) || 3, 1, 5) * 10; }
+  const postponeCost = (difficulty) => clamp(Number(difficulty) || 3, 1, 5) * 100;
+  function calcProbOf(s, c, tk) {
     const ca = coinsOf(s, 'A', c.id), cb = coinsOf(s, 'B', c.id);
     const base = ca / (ca + cb);
-    const diff = scores.B - scores.A;
-    const adj = clamp(diff * 0.02, -0.2, 0.2);
+    const diff = tk.B - tk.A;                                  // positive: A is behind in tokens
+    const adj = clamp(Math.round(diff / TOKENS_PER_PP) * 0.02, -0.2, 0.2);
     const raw = base + adj;
     const final = clamp(raw, 0.15, 0.85);
     return { pA: final, base, adj, diff, clampLow: raw < 0.15, clampHigh: raw > 0.85, ca, cb, neutral: !walletValidOf(s, 'A') || !walletValidOf(s, 'B') };
@@ -397,7 +411,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       else parts.push(missing + why + ' 5개로 보고, ' + likerPart());
     } else if (r.ca === r.cb) parts.push('둘이 ' + josa(c.name, '을', '를') + ' 비슷하게 생각해서 반반(50%)');
     else parts.push(likerPart());
-    if (Math.abs(r.adj) >= 0.005) { const behind = r.diff > 0 ? 'A' : 'B'; parts.push(nameOf(s, behind) + ': ' + Math.abs(r.diff) + '점 뒤라 +' + Math.round(Math.abs(r.adj) * 100) + '%p'); }
+    if (Math.abs(r.adj) >= 0.005) { const behind = r.diff > 0 ? 'A' : 'B'; parts.push(nameOf(s, behind) + ': 토큰 ' + Math.abs(r.diff) + '개 뒤라 +' + Math.round(Math.abs(r.adj) * 100) + '%p'); }
     if (r.clampLow || r.clampHigh) parts.push('한쪽으로 너무 몰리지 않게 ' + (r.clampHigh ? 85 : 15) + '%에서 멈춤');
     const pw = who === 'A' ? pct(r.pA) : 100 - pct(r.pA);
     return parts.join(' · ') + ' → ' + nameOf(s, who) + ' ' + pw + '%';
@@ -413,15 +427,14 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     for (const c of cs) { const st = (c.createdDate && c.createdDate > c.startDate) ? c.createdDate : c.startDate; if (!s.lastProcessed || st >= s.lastProcessed) { if (!start || st < start) start = st; } }
     if (!start) start = lastDate;
     if (daysBetween(start, lastDate) > 800) start = addDays(lastDate, -800);
+    const tk = tokensOf(s);
     for (let d = start; d <= lastDate; d = addDays(d, 1)) {
-      const scores = scoresBeforeOf(s, d);
       for (const c of cs) {
         if (!isDue(c, d)) continue; const k = drawKey(d, c.id); if (s.draws[k]) continue;
-        const r = calcProbOf(s, c, scores);
+        const r = calcProbOf(s, c, tk);
         const rnd = seededRandom(s.seed + '|' + d + '|' + c.id)();
         const who = rnd < r.pA ? 'A' : 'B';
-        const points = 11 - coinsOf(s, who, c.id);
-        s.draws[k] = { date: d, choreId: c.id, choreName: c.name, icon: c.icon, who, pA: r.pA, base: r.base, adj: r.adj, points, neutral: r.neutral, clamp: r.clampLow || r.clampHigh, reason: reasonTextOf(s, c, r, who), done: false, cheers: 0, ts: Date.now() + added.length };
+        s.draws[k] = { date: d, choreId: c.id, choreName: c.name, icon: c.icon, difficulty: choreDiff(c), who, pA: r.pA, base: r.base, adj: r.adj, neutral: r.neutral, clamp: r.clampLow || r.clampHigh, reason: reasonTextOf(s, c, r, who), done: false, cheers: 0, ts: Date.now() + added.length };
         added.push(k);
       }
     }
@@ -433,13 +446,15 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   const chores = () => choresOf(state);
   const playerName = (p) => nameOf(state, p);
   const walletValid = (p) => walletValidOf(state, p);
-  const scoresAll = () => scoresAllOf(state);
-  const calcProb = (c, sc) => calcProbOf(state, c, sc);
+  const tokensAll = () => tokensOf(state);
+  const calcProb = (c, tk) => calcProbOf(state, c, tk);
   function moodFor(p) {
     if (doneFlash[p] > Date.now()) return 'done';
-    const s = scoresAll(); const diff = s[other(p)] - s[p];
-    if (diff >= 7) return 'sleepy'; if (diff >= 3) return 'pout'; if (diff <= -3) return 'proud'; return 'calm';
+    const s = tokensAll(); const diff = s[other(p)] - s[p];
+    if (diff >= 600) return 'sleepy'; if (diff >= 250) return 'pout'; if (diff <= -250) return 'proud'; return 'calm';
   }
+  function ledgerOf(s) { return (s && s.ledger) || []; }
+  function pushLedger(s, entry) { s.ledger = ledgerOf(s).slice(-300); s.ledger.push(Object.assign({ ts: Date.now(), date: dateStr(new Date()) }, entry)); }
   const LINES = {
     sleepy: ['요즘 너무 편했나… 쿨쿨', '하암… 내 차례 언제지'],
     pout: ['다음 캡슐은 내 거야', '이번엔 내 차례였는데'],
@@ -538,7 +553,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     for (let i = colors.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = colors[i]; colors[i] = colors[j]; colors[j] = t; }
     const marbles = MARBLE_POS.map((p, i) => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="8" fill="' + colors[i] + '" stroke="var(--line)" stroke-width="1.5"/>').join('');
     const L = 'stroke="var(--line)" stroke-width="2.5"';
-    const outlet = (opts.capsules || []).map((c, i) => '<g transform="translate(' + (50 + i * 32) + ' 214)"><path d="M0 14 a14 14 0 0 1 28 0 z" fill="' + (c === 'A' ? 'var(--a)' : 'var(--b)') + '" stroke="var(--line)" stroke-width="2"/><path d="M0 14 a14 14 0 0 0 28 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><line x1="0" y1="14" x2="28" y2="14" stroke="var(--line)" stroke-width="1.5"/></g>').join('');
+    const outlet = (opts.capsules || []).map((c, i) => '<g transform="translate(' + (50 + i * 32) + ' 214)"><path d="M0 14 a14 14 0 0 1 28 0 z" fill="' + c + '" stroke="var(--line)" stroke-width="2"/><path d="M0 14 a14 14 0 0 0 28 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><line x1="0" y1="14" x2="28" y2="14" stroke="var(--line)" stroke-width="1.5"/></g>').join('');
     const textW = (str, fs) => { let w = 0; for (const ch of str) w += /[가-힣ㄱ-ㅎ]/.test(ch) ? fs : /[0-9%]/.test(ch) ? fs * 0.62 : fs * 0.4; return w; };
     const dispText = (str, y, fs) => '<text x="93" y="' + y + '" font-size="' + fs + '" font-weight="700" text-anchor="middle" fill="var(--bg)" font-family="var(--font)"' + (textW(str, fs) > 104 ? ' textLength="104" lengthAdjust="spacingAndGlyphs"' : '') + '>' + esc(str) + '</text>';
     const text = lines.length === 1 ? dispText(lines[0], 173, 14) : dispText(lines[0], 165, 12) + dispText(lines[1], 180, 12);
@@ -609,7 +624,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (!canReveal()) { reveal.current = null; reveal.phase = null; return; }   // resumes when the today screen is visible
     if (!reveal.queue.length) { reveal = null; render(); return; }
     reveal.current = reveal.queue.shift(); reveal.phase = 'shake'; render();
-    setTimeout(() => { if (!reveal || !reveal.current) return; reveal.phase = 'show'; render(); const r = state && state.draws && state.draws[reveal.current]; const lv = $('#live'); if (lv && r) lv.textContent = '오늘 ' + r.choreName + ' 담당은 ' + playerName(r.who) + ', ' + r.points + '점'; setTimeout(() => { if (!reveal) return; reveal.current = null; stepReveal(); }, 2600); }, 1300);
+    setTimeout(() => { if (!reveal || !reveal.current) return; reveal.phase = 'show'; render(); const r = state && state.draws && state.draws[reveal.current]; const lv = $('#live'); if (lv && r) lv.textContent = '오늘 ' + r.choreName + ' 담당은 ' + playerName(r.who) + ', 완수하면 토큰 ' + rewardOf(state, r.who, r.choreId, choreDiff(r)) + '개'; setTimeout(() => { if (!reveal) return; reveal.current = null; stepReveal(); }, 2600); }, 1300);
   }
   function connectRoom(code) {
     store.code = code; lsSet(ROOM_KEY, code);
@@ -715,10 +730,13 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         '<section>' + person(0) + person(1) + '</section>' +
         '<section><button class="btn red" data-onb-next="2" style="min-height:50px">다음: 캡슐 넣기</button></section>';
     }
-    const rows = d.chores.map((c, i) => '<div class="card flat" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><div class="row nowrap" style="flex:1 1 100%"><button type="button" class="chip" data-onb-icon="' + i + '" aria-label="아이콘 바꾸기 (지금: ' + ICON_NAMES[c.icon] + ')">' + icon(c.icon, 18) + '</button><input class="input grow" aria-label="집안일 이름" data-onb-chore-name="' + i + '" value="' + esc(c.name) + '" placeholder="집안일 이름" maxlength="12"><button type="button" class="iconbtn" data-onb-remove="' + i + '" aria-label="삭제" style="margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div class="row nowrap" style="gap:10px"><span class="muted" style="font-size:12px;font-weight:700">돌아오는 주기</span><div class="stepper" aria-label="주기"><button type="button" data-onb-period="' + i + ':-1" aria-label="주기 줄이기" ' + (c.period <= 1 ? 'disabled' : '') + '>−</button><span class="v num wide">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span><button type="button" data-onb-period="' + i + ':1" aria-label="주기 늘리기" ' + (c.period >= 30 ? 'disabled' : '') + '>+</button></div></div></div>').join('');
-    return steps + '<section><h2 style="font-size:20px">기계에 넣을 캡슐</h2><p class="muted" style="font-size:13px">집안일 하나가 캡슐 하나예요. "돌아오는 주기"는 그 캡슐이 말판을 한 바퀴 도는 날수예요. 예시 세 개는 바꿔도 돼요.</p></section>' +
+    const rows = d.chores.map((c, i) => '<div class="card flat" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap"><button type="button" class="chip" data-onb-icon="' + i + '" aria-label="아이콘 바꾸기 (지금: ' + ICON_NAMES[c.icon] + ')">' + icon(c.icon, 18) + '</button><input class="input grow" aria-label="집안일 이름" data-onb-chore-name="' + i + '" value="' + esc(c.name) + '" placeholder="집안일 이름" maxlength="12"><button type="button" class="iconbtn" data-onb-remove="' + i + '" aria-label="삭제" style="margin:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+      '<div class="row" style="gap:10px"><label class="row nowrap" style="gap:6px;font-size:12px;font-weight:700;color:var(--muted)">주기 <input class="input num" type="number" inputmode="numeric" min="1" max="365" data-onb-period-in="' + i + '" value="' + c.period + '" style="width:64px;min-height:40px;padding:0 8px;text-align:center"> 일마다</label>' +
+      '<label class="row nowrap" style="gap:6px;font-size:12px;font-weight:700;color:var(--muted)">시작 <input class="input num" type="number" inputmode="numeric" min="0" max="365" data-onb-startin="' + i + '" value="' + (c.startIn || 0) + '" style="width:60px;min-height:40px;padding:0 8px;text-align:center"> 일 뒤</label></div>' +
+      '<div class="row nowrap" style="gap:6px"><span style="font-size:12px;font-weight:700;color:var(--muted);margin-right:4px">난이도</span>' + diffChips('data-onb-diff="' + i + ':', choreDiff(c)) + '</div></div>').join('');
+    return steps + '<section><h2 style="font-size:20px">기계에 넣을 캡슐</h2><p class="muted" style="font-size:13px">집안일 하나가 캡슐 하나예요. 주기는 캡슐이 말판을 한 바퀴 도는 날수, 난이도는 캡슐 색과 보상(완수 토큰·미루기 값)을 정해요. 이름을 적으면 아이콘은 알아서 골라요.</p></section>' +
       '<section>' + rows + '<button class="btn" data-onb-add>+ 캡슐 추가</button></section>' +
-      '<section class="card"><div class="field"><label for="onb-time">추첨 시각</label><input class="input" type="time" id="onb-time" data-onb-time value="' + esc(d.drawTime) + '"></div><p class="rule">이 시각이 지나고 처음 앱을 열면 그날 돌아온 캡슐이 떨어져요. 오늘 이 시각이 이미 지났으면 바로 첫 추첨이 돼요.<br>기계를 켠 뒤에는 각자 <b>동전 지갑</b>에서 싫은 일·괜찮은 일을 정해요. 채우기 전엔 모든 캡슐을 반반으로 뽑아요.</p></section>' +
+      '<section class="card"><div class="field"><label for="onb-time">추첨 시각</label><input class="input" type="time" id="onb-time" data-onb-time value="' + esc(d.drawTime) + '"></div><p class="rule">이 시각이 지나고 처음 앱을 열면 그날 돌아온 캡슐이 떨어져요. 오늘 이 시각이 이미 지났으면 바로 첫 추첨이 돼요.<br>기계를 켠 뒤에는 각자 <b>동전 지갑</b>에서 싫은 일·괜찮은 일을 정해요. 두 사람 다 토큰 ' + START_TOKENS + '개로 시작하고, 캡슐을 완수하면 토큰을 벌어요.</p></section>' +
       '<section><div class="row nowrap"><button class="btn" data-onb-next="1">이전</button><button class="btn red grow" data-onb-start style="min-height:50px">기계 켜기</button></div></section>';
   }
   function viewRolePick() {
@@ -729,7 +747,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   // ----- today -----
   function viewToday() {
     const now = new Date(); const today = dateStr(now); const ready = timeStr(now) >= (state.drawTime || '08:00');
-    const s = scoresAll(); const nc = nextCapsule();
+    const s = tokensAll(); const nc = nextCapsule();
     const all = drawsOf(state);
     const todays = all.filter((r) => r.date === today).sort((a, b) => a.ts - b.ts);
     const hidden = new Set(reveal ? reveal.queue.concat(reveal.current ? [reveal.current] : []) : []);
@@ -739,10 +757,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     else { lines = ['캡슐을 넣어 주세요']; label = '말판이 비었어요'; }
     let mcls = ''; let dropColor = null;
     if (reveal && reveal.current && !(state.draws && state.draws[reveal.current])) reveal = null;
-    if (reveal && reveal.current) { const r = state.draws[reveal.current]; if (reveal.phase === 'shake') { mcls = 'shaking'; lines = ['달그락달그락…']; } else { mcls = 'dropping'; dropColor = r.who === 'A' ? 'var(--a)' : 'var(--b)'; lines = ['뽕!']; } }
-    const capsulesOut = todays.filter((r) => !hidden.has(drawKey(r.date, r.choreId))).slice(0, 3).map((r) => r.who);
+    if (reveal && reveal.current) { const r = state.draws[reveal.current]; if (reveal.phase === 'shake') { mcls = 'shaking'; lines = ['달그락달그락…']; } else { mcls = 'dropping'; dropColor = DIFF_COLORS[choreDiff(r)]; lines = ['뽕!']; } }
+    const capsulesOut = todays.filter((r) => !hidden.has(drawKey(r.date, r.choreId))).slice(0, 3).map((r) => DIFF_COLORS[choreDiff(r)]);
     const moodA = moodFor('A'), moodB = moodFor('B');
-    const player = (p, mood) => '<div class="player"><div class="bubble">' + esc(lineFor(p, mood)) + '</div>' + charSVG(p, mood) + '<div class="badge ' + p.toLowerCase() + ' num">' + esc(playerName(p)) + (playerName(p).length > 4 ? '<br>' : ' ') + s[p] + '점</div></div>';
+    const player = (p, mood) => '<div class="player"><div class="bubble">' + esc(lineFor(p, mood)) + '</div>' + charSVG(p, mood) + '<div class="badge ' + p.toLowerCase() + ' num">' + esc(playerName(p)) + (playerName(p).length > 3 ? '<br>' : ' ') + s[p] + '토큰</div></div>';
     const hero = '<section class="hero-wrap" id="hero"><div class="hero">' + player('A', moodA) +
       '<div class="machine-wrap"><div class="machine-label">' + esc(label) + '</div>' + machineSVG(pAnext, lines, { cls: mcls, key: keyNext, capsules: capsulesOut, dropColor }) + '</div>' +
       player('B', moodB) + '</div></section>';
@@ -765,27 +783,31 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     else if (wsOther !== 'ok') notice = '<section><div class="notice">' + icon('dish', 16) + '<div>' + esc(playerName(other(me))) + '의 동전 지갑이 ' + (wsOther === 'stale' ? '아직 새 캡슐에 맞춰지지 않았어요' : '아직 비어 있어요') + '. 맞출 때까지는 그쪽 선호도를 5개씩 균등으로 봐요.</div></div></section>';
     const pendingSec = pending.length ? '<section><div class="sec-head"><h2>아직 안 한 캡슐</h2><span class="sub">최근 2주</span></div>' + pending.map(capsuleCard).join('') + '</section>' : '';
     const trackSec = '<section><div class="sec-head"><h2>다음에 떨어질 캡슐</h2><span class="sub">말판 트랙 · 가까운 순서</span></div>' + trackHTML(today, ready) + '</section>';
-    const lead = s.A === s.B ? null : (s.A > s.B ? 'A' : 'B'); const diff = Math.abs(s.A - s.B); const max = Math.max(10, s.A, s.B);
+    const lead = s.A === s.B ? null : (s.A > s.B ? 'A' : 'B'); const diff = Math.abs(s.A - s.B); const max = Math.max(100, s.A, s.B);
+    const pp = Math.min(20, Math.round(diff / TOKENS_PER_PP) * 2);
+    const giftForm = giftOpen ? '<div class="row nowrap" style="margin-top:10px;gap:8px"><input class="input num" type="number" inputmode="numeric" id="gift-amt" min="1" max="' + s[me] + '" step="10" value="100" style="width:110px" aria-label="보낼 토큰"><button class="btn mint sm" data-gift-send>' + esc(playerName(other(me))) + '에게 보내기</button><button class="btn ghost sm" data-gift-open>취소</button></div>' : '';
     const scoreSec = '<section class="card">' +
-      '<div class="score-row"><span class="lbl">' + esc(playerName('A')) + '</span><div class="tube"><div style="width:' + (s.A / max * 100) + '%;background:var(--a)"></div></div><span class="num" style="width:30px;text-align:right">' + s.A + '</span></div>' +
-      '<div class="score-row" style="margin-top:6px"><span class="lbl">' + esc(playerName('B')) + '</span><div class="tube"><div style="width:' + (s.B / max * 100) + '%;background:var(--b)"></div></div><span class="num" style="width:30px;text-align:right">' + s.B + '</span></div>' +
-      '<div style="font-size:15px;font-weight:700;margin-top:8px">' + (lead ? josa(esc(playerName(lead)), '이', '가') + ' ' + diff + '점 앞서요' : '지금 딱 똑같아요') + '</div>' +
-      '<div class="muted" style="font-size:12px">' + (lead ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + Math.min(20, diff * 2) + '%p 올라가요' : '따라잡기 보정 없이 동전 비율대로만 뽑아요') + '</div>' +
-      '<div class="muted" style="font-size:11px;margin-top:4px">각자 모든 캡슐을 한 번씩 하면 두 사람 다 ' + (6 * chores().length) + '점이 돼요 · 동전 합이 같으니까요</div></section>';
+      '<div class="sec-head"><h2>토큰 잔액</h2><span class="sub">많이 벌수록 싫은 일을 많이 한 거예요</span></div>' +
+      '<div class="score-row" style="margin-top:8px"><span class="lbl">' + esc(playerName('A')) + '</span><div class="tube"><div style="width:' + (s.A / max * 100) + '%;background:var(--a)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.A + '</span></div>' +
+      '<div class="score-row" style="margin-top:6px"><span class="lbl">' + esc(playerName('B')) + '</span><div class="tube"><div style="width:' + (s.B / max * 100) + '%;background:var(--b)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.B + '</span></div>' +
+      '<div style="font-size:15px;font-weight:700;margin-top:8px">' + (lead ? josa(esc(playerName(lead)), '이', '가') + ' 토큰 ' + diff + '개 앞서요' : '지금 딱 똑같아요') + '</div>' +
+      '<div class="muted" style="font-size:12px">' + (lead && pp > 0 ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + pp + '%p 올라가요' : '토큰 100개 차이마다 뒤처진 쪽이 2%p 더 잘 걸려요') + '</div>' +
+      '<div class="row nowrap" style="margin-top:10px;justify-content:space-between"><span class="muted" style="font-size:11px">고마우면 토큰으로 양보할 수 있어요</span>' + (giftOpen ? '' : '<button class="btn sm" data-gift-open>토큰 보내기</button>') + '</div>' + giftForm + '</section>';
     return hero + (banner ? '<section>' + banner + '</section>' : '') + notice + todaySec + pendingSec + trackSec + scoreSec;
   }
   function capsuleCard(r) {
     const k = drawKey(r.date, r.choreId); const mine = r.who === me; const today = dateStr(new Date());
-    const whoCls = r.who.toLowerCase();
-    const capSvg = '<svg class="cap-icon" viewBox="0 0 44 44" aria-hidden="true"><path d="M4 22 a18 18 0 0 1 36 0 z" fill="var(--' + whoCls + ')" stroke="var(--line)" stroke-width="2"/><path d="M4 22 a18 18 0 0 0 36 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(13 24) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[r.icon] || ICONS.dish) + '</g></svg>';
+    const whoCls = r.who.toLowerCase(); const dif = choreDiff(r); const reward = r.done && typeof r.reward === 'number' ? r.reward : rewardOf(state, r.who, r.choreId, dif); const cost = postponeCost(dif); const tk = tokensAll();
+    const capSvg = '<svg class="cap-icon" viewBox="0 0 44 44" role="img" aria-label="난이도 ' + dif + '"><path d="M4 22 a18 18 0 0 1 36 0 z" fill="' + DIFF_COLORS[dif] + '" stroke="var(--line)" stroke-width="2"/><path d="M4 22 a18 18 0 0 0 36 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(13 24) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[r.icon] || ICONS.dish) + '</g></svg>';
     let action;
     if (r.done) action = '<span class="pill mint">완료</span>';
-    else if (mine) action = '<button class="btn mint sm" data-done="' + esc(k) + '">다 했어요</button>';
+    else if (mine) action = '<div style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><button class="btn mint sm" data-done="' + esc(k) + '">다 했어요</button><button class="btn sm" data-postpone="' + esc(k) + '" ' + (tk[me] < cost ? 'disabled' : '') + ' title="토큰 ' + cost + '개 내고 ' + esc(playerName(other(me))) + '에게 넘기기">미루기 −' + cost + '</button></div>';
     else action = '<button class="btn sm" data-cheer="' + esc(k) + '">응원 꾹' + (r.cheers ? ' <span class="num">' + r.cheers + '</span>' : '') + '</button>';
     const dateTag = r.date !== today ? '<span class="pill muted">' + fmtDate(r.date) + '</span>' : '';
-    return '<article class="card capsule-card' + (r.done ? ' done' : '') + '">' + capSvg + '<div class="info"><div class="title"><span>' + esc(r.choreName) + ' → <span class="who-' + whoCls + '">' + esc(playerName(r.who)) + '</span></span><span class="pill gold num">+' + r.points + '점</span>' + dateTag + '</div>' +
+    const handed = r.postponedBy ? '<span class="pill muted">' + esc(playerName(r.postponedBy)) + '가 미룸</span>' : '';
+    return '<article class="card capsule-card' + (r.done ? ' done' : '') + '">' + capSvg + '<div class="info"><div class="title"><span>' + esc(r.choreName) + ' → <span class="who-' + whoCls + '">' + esc(playerName(r.who)) + '</span></span><span class="pill gold num">' + (r.done ? '+' + reward + ' 토큰 받음' : '완수 +' + reward) + '</span>' + handed + dateTag + '</div>' +
       '<div class="pbar" aria-label="' + esc(playerName('A')) + ' ' + pct(r.pA) + '%, ' + esc(playerName('B')) + ' ' + (100 - pct(r.pA)) + '%">' + pbarInner(r.pA, r.base) + '</div>' +
-      '<div class="reason">' + esc(r.reason) + (r.cheers ? ' · 응원 ' + r.cheers + '번' : '') + '</div></div>' + action + '</article>';
+      '<div class="reason">' + esc(r.reason) + ' · 난이도 ' + dif + (r.cheers ? ' · 응원 ' + r.cheers + '번' : '') + '</div></div>' + action + '</article>';
   }
   function pbarInner(pA, base) {
     if (base == null || Math.abs(pA - base) < 0.005) return '<div class="pa" style="width:' + (pA * 100) + '%"></div><div class="pb" style="width:' + ((1 - pA) * 100) + '%"></div>';
@@ -798,45 +820,48 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     for (const c of chores()) { const d = nextDue(c, from); if (d) items.push({ c, d }); }
     items.sort((a, b) => a.d.localeCompare(b.d) || a.c.name.localeCompare(b.c.name));
     if (!items.length) return '<div class="card soft empty">말판에 캡슐이 없어요</div>';
-    const s = scoresAll();
+    const s = tokensAll();
     let html = '<div class="track"><div class="slot inlet">투입<br>구</div>';
     let lastDay = -1;
     items.slice(0, 8).forEach((it, idx) => {
       const n = daysBetween(today, it.d);
       if (lastDay >= 0 && n > lastDay + 1) html += '<div class="slot">' + (n - lastDay - 1) + '일 비움</div>';
       const r = calcProb(it.c, s);
-      html += '<div class="slot cap' + (idx === 0 ? ' next' : '') + '"><span class="' + (idx === 0 ? 'wobble' : '') + '" style="display:inline-flex">' + capsuleMini(it.c.icon) + '</span><div class="n">' + esc(it.c.name) + '<small>' + relDay(it.d, today) + ' · ' + esc(playerName('A')) + ' ' + pct(r.pA) + '%</small></div></div>';
+      html += '<div class="slot cap' + (idx === 0 ? ' next' : '') + '"><span class="' + (idx === 0 ? 'wobble' : '') + '" style="display:inline-flex">' + capsuleMini(it.c.icon, DIFF_COLORS[choreDiff(it.c)]) + '</span><div class="n">' + esc(it.c.name) + '<small>' + relDay(it.d, today) + ' · ' + esc(playerName('A')) + ' ' + pct(r.pA) + '%</small></div></div>';
       lastDay = n;
     });
     return html + '</div>';
   }
-  function capsuleMini(ic) { return '<svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><path d="M4 20 a16 16 0 0 1 32 0 z" fill="var(--track)" stroke="var(--line)" stroke-width="2"/><path d="M4 20 a16 16 0 0 0 32 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(11 21) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[ic] || ICONS.dish) + '</g></svg>'; }
+  function diffChips(attrPrefix, cur) { return [1, 2, 3, 4, 5].map((n) => '<button type="button" class="swatch' + (cur === n ? ' on' : '') + '" aria-pressed="' + (cur === n) + '" ' + attrPrefix + n + '" aria-label="난이도 ' + n + ' ' + DIFF_NAMES[n] + '" title="' + DIFF_NAMES[n] + '" style="background:' + DIFF_COLORS[n] + ';width:36px;height:36px;box-shadow:none;font-size:13px;font-weight:700;color:#2B2622">' + n + '</button>').join(''); }
+  function capsuleMini(ic, lid) { return '<svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><path d="M4 20 a16 16 0 0 1 32 0 z" fill="' + (lid || 'var(--track)') + '" stroke="var(--line)" stroke-width="2"/><path d="M4 20 a16 16 0 0 0 32 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(11 21) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[ic] || ICONS.dish) + '</g></svg>'; }
 
   // ----- board -----
   function viewBoard() {
     const today = dateStr(new Date()); const ready = timeStr(new Date()) >= (state.drawTime || '08:00'); const from = ready ? addDays(today, 1) : today;
-    const s = scoresAll();
+    const s = tokensAll();
     const list = chores().map((c) => {
       if (editingChore === c.id) return choreForm(c);
-      const d = nextDue(c, from); const r = calcProb(c, s); const myCoins = walletValid(me) ? state.prefs[me][c.id] : null;
-      return '<article class="card capsule-card">' + '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center">' + capsuleMini(c.icon).replace('width="28" height="28"', 'width="40" height="40"') + '</span>' +
-        '<div class="info"><div class="title"><span>' + esc(c.name) + '</span><span class="pill">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span></div>' +
-        '<div class="reason">' + (d ? '다음 추첨 ' + relDay(d, today) + ' (' + fmtDate(d, true) + ')' : '') + (myCoins ? ' · 내 동전 ' + myCoins + '개 → 걸리면 +' + (11 - myCoins) + '점' : ' · 지갑을 채우면 점수가 보여요') + '</div>' +
+      const d = nextDue(c, from); const r = calcProb(c, s); const dif = choreDiff(c);
+      return '<article class="card capsule-card">' + '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center">' + capsuleMini(c.icon, DIFF_COLORS[dif]).replace('width="28" height="28"', 'width="40" height="40"') + '</span>' +
+        '<div class="info"><div class="title"><span>' + esc(c.name) + '</span><span class="pill">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span><span class="pill" style="background:' + DIFF_COLORS[dif] + ';color:#2B2622">난이도 ' + dif + '</span></div>' +
+        '<div class="reason">' + (d ? '다음 추첨 ' + relDay(d, today) + ' (' + fmtDate(d, true) + ')' : '') + ' · 내가 하면 +' + rewardOf(state, me, c.id, dif) + ' 토큰 · 미루기 ' + postponeCost(dif) + '</div>' +
         '<div class="pbar" style="height:8px">' + pbarInner(r.pA, r.base) + '</div></div>' +
         '<button class="btn sm" data-edit-chore="' + esc(c.id) + '">고치기</button></article>';
     }).join('');
     return '<section><div class="sec-head"><h2>말판 위 캡슐 ' + chores().length + '개</h2><span class="sub">캡슐 하나 = 집안일 하나</span></div>' + (list || '<div class="card soft empty">아직 캡슐이 없어요</div>') +
       (addingChore ? choreForm(null) : '<button class="btn red" data-add-chore>+ 캡슐 추가</button>') + '</section>' +
-      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요(동전 수가 바뀌니까요).</p></section>';
+      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도 × 10, 미루기 = 난이도 × 100 토큰이에요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
   }
   function choreForm(c) {
-    const isNew = !c; const d = c || { name: '', icon: 'dish', period: 3, startDate: dateStr(new Date()) };
+    const isNew = !c; const today = dateStr(new Date()); const d = c || { name: '', icon: 'dish', period: 3, startDate: today, difficulty: 3 };
+    const startIn = c ? Math.max(0, daysBetween(today, c.startDate)) : 0;
     const icons = Object.keys(ICONS).map((k) => '<button type="button" class="chip' + (d.icon === k ? ' on' : '') + '" data-form-icon="' + k + '" aria-label="' + ICON_NAMES[k] + '">' + icon(k, 18) + '</button>').join('');
-    return '<div class="card" id="chore-form" data-chore-id="' + esc(c ? c.id : '') + '" style="display:flex;flex-direction:column;gap:10px">' +
-      '<div class="field"><label for="cf-name">집안일 이름</label><input class="input" id="cf-name" value="' + esc(d.name) + '" placeholder="예: 분리수거" maxlength="12"></div>' +
-      '<div class="field"><label>아이콘</label><div class="chips">' + icons + '</div><input type="hidden" id="cf-icon" value="' + esc(d.icon) + '"></div>' +
-      '<div class="row"><div class="field"><label for="cf-period">며칠마다</label><div class="stepper"><button type="button" data-step="cf-period:-1" aria-label="줄이기">−</button><input class="v num" id="cf-period" type="number" min="1" max="30" value="' + d.period + '" style="border:0;width:48px;background:transparent;text-align:center"><button type="button" data-step="cf-period:1" aria-label="늘리기">+</button></div></div>' +
-      '<div class="field grow"><label for="cf-start">첫 추첨 날</label><input class="input" type="date" id="cf-start" value="' + esc(d.startDate) + '" max="' + addDays(dateStr(new Date()), 365) + '"></div></div>' +
+    return '<div class="card" id="chore-form" data-chore-id="' + esc(c ? c.id : '') + '" data-start-in="' + startIn + '" style="display:flex;flex-direction:column;gap:10px">' +
+      '<div class="field"><label for="cf-name">집안일 이름 <span class="muted" style="font-weight:400">(적으면 아이콘을 알아서 골라요)</span></label><input class="input" id="cf-name" data-cf-name value="' + esc(d.name) + '" placeholder="예: 분리수거" maxlength="12"></div>' +
+      '<div class="field"><label>아이콘</label><div class="chips">' + icons + '</div><input type="hidden" id="cf-icon" value="' + esc(d.icon) + '"><input type="hidden" id="cf-icon-touched" value="' + (c ? '1' : '0') + '"></div>' +
+      '<div class="field"><label>난이도 <span class="muted" style="font-weight:400">(색 · 완수 토큰 · 미루기 값)</span></label><div class="row" style="gap:6px">' + diffChips('data-form-diff="', choreDiff(d)) + '</div><input type="hidden" id="cf-diff" value="' + choreDiff(d) + '"></div>' +
+      '<div class="row"><div class="field"><label for="cf-period">며칠마다 (1~365)</label><div class="stepper"><button type="button" data-step="cf-period:-1" aria-label="줄이기">−</button><input class="v num" id="cf-period" type="number" inputmode="numeric" min="1" max="365" value="' + d.period + '" style="border:0;width:56px;background:transparent;text-align:center"><button type="button" data-step="cf-period:1" aria-label="늘리기">+</button></div></div>' +
+      '<div class="field"><label for="cf-startin">며칠 뒤부터 (0=오늘)</label><div class="stepper"><button type="button" data-step="cf-startin:-1" aria-label="줄이기">−</button><input class="v num" id="cf-startin" type="number" inputmode="numeric" min="0" max="365" value="' + startIn + '" style="border:0;width:56px;background:transparent;text-align:center"><button type="button" data-step="cf-startin:1" aria-label="늘리기">+</button></div></div></div>' +
       '<div class="row nowrap">' + (isNew ? '' : '<button class="btn" data-delete-chore="' + esc(c.id) + '" style="color:var(--red)">빼기</button>') + '<button class="btn" data-cancel-chore>취소</button><button class="btn mint grow" data-save-chore>' + (isNew ? '말판에 올리기' : '저장') + '</button></div></div>';
   }
 
@@ -851,30 +876,37 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const left = total - used;
     const rows = cs.map((c) => {
       const v = walletDraft[c.id]; const coins = []; for (let i = 1; i <= 10; i++) coins.push('<span class="coin' + (i <= v ? ' on' : '') + '"></span>');
-      return '<div class="card flat" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap"><span style="display:inline-flex">' + icon(c.icon, 20) + '</span><div class="grow"><div style="font-weight:700">' + esc(c.name) + '</div><div class="muted" style="font-size:11px">' + (v <= 3 ? '정말 싫어요' : v <= 5 ? '그냥 그래요' : v <= 7 ? '괜찮아요' : '해도 돼요') + ' · 걸리면 <b class="num">+' + (11 - v) + '점</b></div></div>' +
+      return '<div class="card flat" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap"><span style="display:inline-flex">' + icon(c.icon, 20) + '</span><div class="grow"><div style="font-weight:700">' + esc(c.name) + ' <span class="pill" style="background:' + DIFF_COLORS[choreDiff(c)] + ';color:#2B2622;font-size:10px">난이도 ' + choreDiff(c) + '</span></div><div class="muted" style="font-size:11px">' + (v <= 3 ? '정말 싫어요' : v <= 5 ? '그냥 그래요' : v <= 7 ? '괜찮아요' : '해도 돼요') + ' · ' + esc(playerName(other(me))) + '가 하면 <b class="num">+' + ((11 - v) * choreDiff(c) * 10) + ' 토큰</b></div></div>' +
         '<div class="stepper"><button type="button" data-coin="' + esc(c.id) + ':-1" aria-label="동전 빼기" ' + (v <= 1 ? 'disabled' : '') + '>−</button><span class="v num">' + v + '</span><button type="button" data-coin="' + esc(c.id) + ':1" aria-label="동전 넣기" ' + (v >= 10 || left <= 0 ? 'disabled' : '') + '>+</button></div></div>' +
         '<div class="coinrow" aria-hidden="true">' + coins.join('') + '</div></div>';
     }).join('');
     const status = left === 0 ? '<span class="pill mint">동전을 다 썼어요 · 저장할 수 있어요</span>' : left > 0 ? '<span class="pill gold num">남은 동전 ' + left + '개 · 다 써야 저장돼요</span>' : '<span class="pill red num">동전을 ' + (-left) + '개 더 썼어요 · 그만큼 빼 주세요</span>';
     return '<section><div class="sec-head"><h2>' + esc(playerName(me)) + '의 동전 지갑</h2><span class="sub num">' + used + ' / ' + total + '</span></div>' +
-      '<div class="notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div>이 화면은 ' + esc(playerName(other(me))) + '에게 안 보여요. 동전을 <b>많이</b> 넣은 일은 "그래도 괜찮은 일"이라 더 자주 걸리지만 점수는 작아요. <b>싫은 일엔 동전을 아끼면</b> 드물게 걸리고, 걸리면 점수가 커요.</div></div>' +
+      '<div class="notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div>동전을 <b>많이</b> 넣은 일은 "그래도 괜찮은 일"이라 내가 더 자주 걸려요. <b>싫은 일엔 동전을 아끼면</b> 나는 드물게 걸리고, 대신 ' + esc(playerName(other(me))) + '가 그 일을 해 주면 토큰을 많이 받아요(싫어하는 만큼 × 난이도 × 10).</div></div>' +
       '<div>' + status + '</div>' + (rows || '<div class="card soft empty">말판에 캡슐이 없어요. 먼저 캡슐을 추가해 주세요.</div>') + '</section>' +
       (cs.length ? '<section><div class="row nowrap"><button class="btn" data-wallet-even>똑같이 나누기</button><button class="btn mint grow" data-wallet-save ' + (left !== 0 ? 'disabled' : '') + ' style="min-height:50px">이대로 저장</button></div>' +
-        '<p class="rule">규칙: 동전은 집안일 수 × 5개(' + total + '개). 캡슐마다 1~10개, 남김 없이. 두 사람 동전 합이 같아서, 각자 모든 캡슐을 한 번씩 하면 두 사람 다 ' + (6 * cs.length) + '점이 돼요.</p></section>' : '');
+        '<p class="rule">규칙: 동전은 집안일 수 × 5개(' + total + '개). 캡슐마다 1~10개, 남김 없이. 두 사람 동전 합이 같아서 서로 공평해요.</p></section>' : '');
   }
 
   // ----- history -----
   function viewHistory() {
     const all = drawsOf(state).sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
-    if (!all.length) return '<section><div class="card soft empty">아직 떨어진 캡슐이 없어요</div></section>';
-    const byDate = {}; for (const r of all) (byDate[r.date] = byDate[r.date] || []).push(r);
+    const ledger = ledgerOf(state);
+    if (!all.length && !ledger.length) return '<section><div class="card soft empty">아직 떨어진 캡슐이 없어요</div></section>';
+    const byDate = {}; for (const r of all) (byDate[r.date] = byDate[r.date] || []).push({ kind: 'draw', r, ts: r.ts });
+    for (const l of ledger) (byDate[l.date] = byDate[l.date] || []).push({ kind: 'ledger', l, ts: l.ts });
     const month = dateStr(new Date()).slice(0, 7); const ms = { A: 0, B: 0 }, cnt = { A: 0, B: 0 };
-    for (const r of all) if (r.date.startsWith(month)) { ms[r.who] += r.points; cnt[r.who]++; }
-    const s = scoresAll();
-    const days = Object.keys(byDate).sort().reverse().slice(0, 60).map((d) => '<div class="hist-day"><div class="d">' + fmtDate(d, true) + '</div>' + byDate[d].map((r) => '<div class="hist-item"><span style="display:inline-flex;color:' + (r.who === 'A' ? 'var(--a)' : 'var(--b-text)') + '">' + icon(r.icon, 20) + '</span><div class="t"><div><b>' + esc(r.choreName) + '</b> → <span class="who-' + r.who.toLowerCase() + '">' + esc(playerName(r.who)) + '</span> <span class="num">+' + r.points + '점</span>' + (r.done ? ' <span class="pill mint">완료</span>' : '') + '</div><div class="r">' + esc(r.reason) + '</div></div></div>').join('') + '</div>').join('');
+    for (const r of all) if (r.date.startsWith(month) && r.done) { ms[r.who] += (r.reward || 0); cnt[r.who]++; }
+    const s = tokensAll();
+    const item = (e) => {
+      if (e.kind === 'draw') { const r = e.r; return '<div class="hist-item"><span style="display:inline-flex;color:' + (r.who === 'A' ? 'var(--a)' : 'var(--b-text)') + '">' + icon(r.icon, 20) + '</span><div class="t"><div><b>' + esc(r.choreName) + '</b> → <span class="who-' + r.who.toLowerCase() + '">' + esc(playerName(r.who)) + '</span> ' + (r.done ? '<span class="pill mint num">완료 +' + (r.reward || 0) + '</span>' : '<span class="pill muted">아직</span>') + (r.postponedBy ? ' <span class="pill muted">' + esc(playerName(r.postponedBy)) + '가 미룸</span>' : '') + '</div><div class="r">' + esc(r.reason) + ' · 난이도 ' + choreDiff(r) + '</div></div></div>'; }
+      const l = e.l; const txt = l.type === 'gift' ? esc(playerName(l.from)) + ' → ' + esc(playerName(l.to)) + ' 토큰 ' + l.amount + '개 양보' : l.type === 'postpone' ? esc(playerName(l.from)) + '가 ' + esc(l.note || '') + ' 미루기: ' + esc(playerName(l.to)) + '에게 토큰 ' + l.amount + '개' : esc(l.note || '');
+      return '<div class="hist-item"><span style="display:inline-flex;color:var(--muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg></span><div class="t"><div>' + txt + '</div></div></div>';
+    };
+    const days = Object.keys(byDate).sort().reverse().slice(0, 60).map((d) => '<div class="hist-day"><div class="d">' + fmtDate(d, true) + '</div>' + byDate[d].sort((a, b) => b.ts - a.ts).map(item).join('') + '</div>').join('');
     return '<section class="card"><h2>이번 달 영수증</h2>' +
-      '<div class="row" style="justify-content:space-between;margin-top:6px"><div><div class="muted" style="font-size:12px">' + esc(playerName('A')) + '</div><div class="num" style="font-size:22px;font-weight:700;color:var(--a)">' + ms.A + '점 <span style="font-size:12px;color:var(--muted)">캡슐 ' + cnt.A + '개</span></div></div><div style="text-align:right"><div class="muted" style="font-size:12px">' + esc(playerName('B')) + '</div><div class="num" style="font-size:22px;font-weight:700;color:var(--b-text)">' + ms.B + '점 <span style="font-size:12px;color:var(--muted)">캡슐 ' + cnt.B + '개</span></div></div></div>' +
-      '<p class="rule" style="margin-top:8px">누적 ' + s.A + ' : ' + s.B + ' · 두 사람 동전 합이 같아서, 캡슐이 한 바퀴씩 돌면 점수 차는 다시 좁혀져요.</p></section>' +
+      '<div class="row" style="justify-content:space-between;margin-top:6px"><div><div class="muted" style="font-size:12px">' + esc(playerName('A')) + ' · 번 토큰</div><div class="num" style="font-size:22px;font-weight:700;color:var(--a)">+' + ms.A + ' <span style="font-size:12px;color:var(--muted)">완수 ' + cnt.A + '개</span></div></div><div style="text-align:right"><div class="muted" style="font-size:12px">' + esc(playerName('B')) + ' · 번 토큰</div><div class="num" style="font-size:22px;font-weight:700;color:var(--b-text)">+' + ms.B + ' <span style="font-size:12px;color:var(--muted)">완수 ' + cnt.B + '개</span></div></div></div>' +
+      '<p class="rule" style="margin-top:8px">잔액 ' + s.A + ' : ' + s.B + ' · 완수 토큰 = 상대가 싫어하는 정도 × 난이도 × 10. 양보와 미루기도 여기에 기록돼요.</p></section>' +
       '<section class="card">' + days + '</section>';
   }
 
@@ -896,9 +928,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       '<section class="card flat"><h2 style="margin-bottom:6px">규칙 한 장</h2><p class="rule">' +
       '<b>1. 주기</b> — 캡슐은 자기 주기만큼 말판을 돌고, 돌아온 날 추첨 시각에 떨어져요.<br>' +
       '<b>2. 동전 지갑</b> — 각자 동전 5×(캡슐 수)개를 1~10개씩 나눠 넣어요. 서로의 지갑은 안 보여요.<br>' +
-      '<b>3. 점수</b> — 걸리면 11 − 내 동전 수. 싫은 일(동전 1개)은 10점, 괜찮은 일(10개)은 1점.<br>' +
-      '<b>4. 확률</b> — 동전을 더 넣은 쪽이 더 잘 걸리고, 누적 점수가 뒤처진 쪽은 1점당 2%p(최대 20%p) 더 잘 걸려요. 15~85% 사이에서만 움직여요.<br>' +
-      '<b>5. 표정</b> — 상대보다 3점 뒤면 삐지고, 7점 뒤면 졸아요. 3점 앞서면 뿌듯해해요.</p></section>' +
+      '<b>3. 토큰</b> — 둘 다 ' + START_TOKENS + '개로 시작. 캡슐을 완수하면 (상대가 그 일을 싫어하는 정도 1~10) × 난이도(1~5) × 10 토큰을 벌어요.<br>' +
+      '<b>4. 미루기·양보</b> — 뽑힌 캡슐을 난이도 × 100 토큰 내고 상대에게 넘길 수 있어요(토큰은 상대에게 가요). 고마우면 토큰을 보내서 양보할 수도 있어요.<br>' +
+      '<b>5. 확률</b> — 동전을 더 넣은 쪽이 더 잘 걸리고, 토큰이 뒤처진 쪽은 100개당 2%p(최대 20%p) 더 잘 걸려요. 15~85% 사이에서만 움직여요.<br>' +
+      '<b>6. 표정</b> — 상대보다 토큰 250개 뒤면 삐지고, 600개 뒤면 졸아요. 250개 앞서면 뿌듯해해요.</p></section>' +
       '<section><button class="btn" data-reset style="color:var(--red)">' + (resetArmed ? '정말 전부 지울까요? 다시 누르면 지워져요' : '기계 초기화 (전부 지우기)') + '</button></section>';
   }
 
@@ -906,7 +939,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function bind() {
     const app = $('#app');
     app.onclick = async (e) => {
-      const t = e.target.closest('[data-go],[data-role],[data-onb-next],[data-onb-start],[data-onb-add],[data-onb-remove],[data-onb-period],[data-onb-icon],[data-fit],[data-fit-random],[data-fit-toggle],[data-done],[data-cheer],[data-add-chore],[data-edit-chore],[data-cancel-chore],[data-save-chore],[data-delete-chore],[data-form-icon],[data-step],[data-coin],[data-wallet-even],[data-wallet-save],[data-switch-role],[data-reset],[data-room-create],[data-room-pick-join],[data-room-pick],[data-room-join],[data-copy-invite],[data-leave-room],[data-retry]');
+      const t = e.target.closest('[data-go],[data-role],[data-onb-next],[data-onb-start],[data-onb-add],[data-onb-remove],[data-onb-period],[data-onb-icon],[data-onb-diff],[data-form-diff],[data-fit],[data-fit-random],[data-fit-toggle],[data-done],[data-postpone],[data-gift-open],[data-gift-send],[data-cheer],[data-add-chore],[data-edit-chore],[data-cancel-chore],[data-save-chore],[data-delete-chore],[data-form-icon],[data-step],[data-coin],[data-wallet-even],[data-wallet-save],[data-switch-role],[data-reset],[data-room-create],[data-room-pick-join],[data-room-pick],[data-room-join],[data-copy-invite],[data-leave-room],[data-retry]');
       if (!t) return;
       const ds = t.dataset;
       try {
@@ -926,20 +959,25 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         if (ds.fit) { const [ctx, field, value] = ds.fit.split(':'); await applyFit(ctx, (pl) => { pl[field] = value; }); return; }
         if (ds.fitRandom) { await applyFit(ds.fitRandom, (pl, who) => { randomOutfit(pl, who); }); return; }
         if (ds.fitToggle) { fitOpen = fitOpen === ds.fitToggle ? null : ds.fitToggle; const names = readSettingsInputs(); if (Object.keys(names).length) { await withState((s) => { applyNames(s, names); }); if (store.mode !== 'fb') afterStateChange(); } render(); return; }
-        if (ds.onbAdd !== undefined) { readOnbInputs(); if (onb.draft.chores.length >= 12) { toast('캡슐은 12개까지만'); return; } onb.draft.chores.push({ name: '', icon: 'broom', period: 3 }); render(); setTimeout(() => { const ins = document.querySelectorAll('[data-onb-chore-name]'); ins[ins.length - 1] && ins[ins.length - 1].focus(); }, 0); return; }
+        if (ds.onbAdd !== undefined) { readOnbInputs(); if (onb.draft.chores.length >= 12) { toast('캡슐은 12개까지만'); return; } onb.draft.chores.push({ name: '', icon: 'broom', period: 3, difficulty: 3, startIn: 0 }); render(); setTimeout(() => { const ins = document.querySelectorAll('[data-onb-chore-name]'); ins[ins.length - 1] && ins[ins.length - 1].focus(); }, 0); return; }
         if (ds.onbRemove) { readOnbInputs(); onb.draft.chores.splice(Number(ds.onbRemove), 1); render(); return; }
         if (ds.onbPeriod) { const [i, dlt] = ds.onbPeriod.split(':'); readOnbInputs(); const c = onb.draft.chores[Number(i)]; c.period = clamp(c.period + Number(dlt), 1, 30); render(); return; }
-        if (ds.onbIcon) { readOnbInputs(); const keys = Object.keys(ICONS); const c = onb.draft.chores[Number(ds.onbIcon)]; c.icon = keys[(keys.indexOf(c.icon) + 1) % keys.length]; render(); return; }
+        if (ds.onbIcon) { readOnbInputs(); const keys = Object.keys(ICONS); const c = onb.draft.chores[Number(ds.onbIcon)]; c.icon = keys[(keys.indexOf(c.icon) + 1) % keys.length]; c.iconTouched = true; render(); return; }
         if (ds.onbStart !== undefined) { readOnbInputs(); await startRoom(); return; }
         // today
-        if (ds.done) { const k = ds.done; let pts = 0, who = null; await withState((s) => { const r = s.draws && s.draws[k]; if (r && !r.done) { r.done = true; r.doneAt = Date.now(); pts = r.points; who = r.who; } }); if (who) { doneFlash[who] = Date.now() + 3200; if (store.mode !== 'fb') afterStateChange(); setTimeout(render, 3300); toast('캡슐 처리 완료! +' + pts + '점은 이미 들어가 있어요'); } return; }
+        if (ds.done) { const k = ds.done; let got = 0, who = null; await withState((s) => { const r = s.draws && s.draws[k]; if (r && !r.done) { r.done = true; r.doneAt = Date.now(); who = r.who; got = rewardOf(s, r.who, r.choreId, choreDiff(r)); r.reward = got; const tk = tokensOf(s); tk[r.who] += got; s.tokens = tk; } }); if (who) { doneFlash[who] = Date.now() + 3200; if (store.mode !== 'fb') afterStateChange(); setTimeout(render, 3300); toast('캡슐 완수! 토큰 +' + got); } return; }
+        if (ds.postpone) { const k = ds.postpone; let msg = ''; await withState((s) => { const r = s.draws && s.draws[k]; if (!r || r.done || r.who !== me) { msg = '지금은 미룰 수 없어요'; return; } const cost = postponeCost(choreDiff(r)); const tk = tokensOf(s); if (tk[me] < cost) { msg = '토큰이 모자라요 (' + cost + '개 필요)'; return; } tk[me] -= cost; tk[other(me)] += cost; s.tokens = tk; r.postponedBy = me; r.postponedAt = Date.now(); r.who = other(me); r.reason = r.reason + ' → ' + nameOf(s, me) + '가 토큰 ' + cost + '개 내고 미룸'; pushLedger(s, { type: 'postpone', from: me, to: other(me), amount: cost, note: r.choreName }); msg = r.choreName + '를 ' + nameOf(s, other(me)) + '에게 넘겼어요 (토큰 −' + cost + ')'; }); if (store.mode !== 'fb') afterStateChange(); toast(msg); return; }
+        if (ds.giftOpen !== undefined) { giftOpen = !giftOpen; render(); if (giftOpen) setTimeout(() => { const i = $('#gift-amt'); i && i.focus(); }, 0); return; }
+        if (ds.giftSend !== undefined) { const amt = Math.floor(Number(($('#gift-amt') || {}).value) || 0); if (amt < 1) { toast('보낼 개수를 적어 주세요'); return; } let msg = ''; await withState((s) => { const tk = tokensOf(s); if (tk[me] < amt) { msg = '토큰이 모자라요'; return; } tk[me] -= amt; tk[other(me)] += amt; s.tokens = tk; pushLedger(s, { type: 'gift', from: me, to: other(me), amount: amt }); msg = nameOf(s, other(me)) + '에게 토큰 ' + amt + '개를 보냈어요'; }); giftOpen = false; if (store.mode !== 'fb') afterStateChange(); toast(msg); hearts(); return; }
         if (ds.cheer) { const k = ds.cheer; await withState((s) => { const r = s.draws && s.draws[k]; if (r) r.cheers = (r.cheers || 0) + 1; }); if (store.mode !== 'fb') afterStateChange(); hearts(); return; }
         // board
         if (ds.addChore !== undefined) { addingChore = true; editingChore = null; render(); return; }
         if (ds.editChore) { editingChore = ds.editChore; addingChore = false; render(); return; }
         if (ds.cancelChore !== undefined) { addingChore = false; editingChore = null; render(); return; }
-        if (ds.formIcon) { $('#cf-icon').value = ds.formIcon; document.querySelectorAll('[data-form-icon]').forEach((b) => b.classList.toggle('on', b.dataset.formIcon === ds.formIcon)); return; }
-        if (ds.step) { const [id, dlt] = ds.step.split(':'); const inp = document.getElementById(id); inp.value = clamp((Number(inp.value) || 1) + Number(dlt), 1, 30); return; }
+        if (ds.formIcon) { $('#cf-icon').value = ds.formIcon; $('#cf-icon-touched').value = '1'; document.querySelectorAll('[data-form-icon]').forEach((b) => b.classList.toggle('on', b.dataset.formIcon === ds.formIcon)); return; }
+        if (ds.formDiff) { $('#cf-diff').value = ds.formDiff; document.querySelectorAll('[data-form-diff]').forEach((b) => { const on = b.dataset.formDiff === ds.formDiff; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); return; }
+        if (ds.onbDiff) { const [i, n] = ds.onbDiff.split(':'); readOnbInputs(); onb.draft.chores[Number(i)].difficulty = Number(n); render(); return; }
+        if (ds.step) { const [id, dlt] = ds.step.split(':'); const inp = document.getElementById(id); const lo = id === 'cf-startin' ? 0 : 1; inp.value = clamp((Number(inp.value) || lo) + Number(dlt), lo, 365); return; }
         if (ds.saveChore !== undefined) { await saveChoreForm(); return; }
         if (ds.deleteChore) { const id = ds.deleteChore; await withState((s) => { s.chores = s.chores.filter((c) => c.id !== id); for (const p of ['A', 'B']) if (s.prefs && s.prefs[p]) delete s.prefs[p][id]; }); editingChore = null; walletDraft = null; if (store.mode !== 'fb') afterStateChange(); toast('캡슐을 뺐어요. 동전 지갑을 다시 채워 주세요'); return; }
         // wallet
@@ -959,6 +997,9 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         if (ds.setQuiet !== undefined) { const v = t.checked; await withState((s) => { s.quiet = v; }); return; }
         if (ds.setName !== undefined) { const v = t.value.trim(); const k = ds.setName; if (v) { await withState((s) => { s.players[k].name = v; }); if (store.mode !== 'fb') afterStateChange(); } return; }
         if (ds.onbName !== undefined) readOnbInputs();
+        if (ds.onbChoreName !== undefined) { readOnbInputs(); const c = onb.draft.chores[Number(ds.onbChoreName)]; const sug = suggestIcon(c.name); if (sug && !c.iconTouched) { c.icon = sug; render(); } return; }
+        if (ds.onbPeriodIn !== undefined || ds.onbStartin !== undefined) { readOnbInputs(); render(); return; }
+        if (ds.cfName !== undefined) { if ($('#cf-icon-touched').value !== '1') { const sug = suggestIcon(t.value); if (sug) { $('#cf-icon').value = sug; document.querySelectorAll('[data-form-icon]').forEach((b) => b.classList.toggle('on', b.dataset.formIcon === sug)); } } return; }
       } catch (err) { console.error(err); toast('저장이 잠깐 안 됐어요'); }
     };
   }
@@ -971,27 +1012,30 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function readOnbInputs() {
     document.querySelectorAll('[data-onb-name]').forEach((i) => { onb.draft.players[Number(i.dataset.onbName)].name = i.value; });
     document.querySelectorAll('[data-onb-chore-name]').forEach((i) => { onb.draft.chores[Number(i.dataset.onbChoreName)].name = i.value; });
+    document.querySelectorAll('[data-onb-period-in]').forEach((i) => { onb.draft.chores[Number(i.dataset.onbPeriodIn)].period = clamp(Number(i.value) || 1, 1, 365); });
+    document.querySelectorAll('[data-onb-startin]').forEach((i) => { onb.draft.chores[Number(i.dataset.onbStartin)].startIn = clamp(Number(i.value) || 0, 0, 365); });
     const tm = $('[data-onb-time]'); if (tm) onb.draft.drawTime = tm.value || '08:00';
   }
   function readSettingsInputs() { const o = {}; document.querySelectorAll('[data-set-name]').forEach((i) => { const v = i.value.trim(); if (v) o[i.dataset.setName] = v; }); return o; }
   function applyNames(s, names) { for (const k in names) if (s.players[k]) s.players[k].name = names[k]; }
   async function startRoom() {
     const d = onb.draft; const today = dateStr(new Date());
-    const cs = d.chores.filter((c) => c.name.trim()).map((c) => ({ id: uid(), name: c.name.trim(), icon: c.icon, period: clamp(c.period, 1, 30), startDate: today, createdDate: today }));
+    const cs = d.chores.filter((c) => c.name.trim()).map((c) => ({ id: uid(), name: c.name.trim(), icon: c.icon, period: clamp(c.period, 1, 365), difficulty: choreDiff(c), startDate: addDays(today, clamp(c.startIn || 0, 0, 365)), createdDate: today }));
     if (!cs.length) { toast('캡슐을 하나 이상 넣어 주세요'); return; }
     const pA = { ...d.players[0], name: d.players[0].name.trim() }, pB = { ...d.players[1], name: d.players[1].name.trim() };
-    const fresh = { v: 2, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, lastProcessed: null, quiet: false };
+    const fresh = { v: 3, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, tokens: { A: START_TOKENS, B: START_TOKENS }, ledger: [], lastProcessed: null, quiet: false };
     await mutate((s) => (s ? { write: false } : { write: true, state: fresh }));
     if (store.mode !== 'fb') { me = null; afterStateChange(); runDraws(); }
   }
   async function saveChoreForm() {
     const name = $('#cf-name').value.trim(); if (!name) { toast('이름을 적어 주세요'); return; }
-    const period = clamp(Number($('#cf-period').value) || 1, 1, 30); const start = $('#cf-start').value || dateStr(new Date()); const ic = $('#cf-icon').value;
-    const id = $('#chore-form').dataset.choreId; const today = dateStr(new Date());
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || daysBetween(today, start) > 365) { toast('첫 추첨 날은 1년 안으로 골라 주세요'); return; }
+    const period = clamp(Number($('#cf-period').value) || 1, 1, 365); const ic = $('#cf-icon').value; const dif = clamp(Number($('#cf-diff').value) || 3, 1, 5);
+    const form = $('#chore-form'); const id = form.dataset.choreId; const today = dateStr(new Date());
+    const startIn = clamp(Number($('#cf-startin').value) || 0, 0, 365); const startChanged = String(startIn) !== form.dataset.startIn;
+    const start = addDays(today, startIn);
     await withState((s) => {
-      if (id) { const c = s.chores.find((x) => x.id === id); if (c) { const periodChanged = c.period !== period || c.startDate !== start; c.name = name; c.icon = ic; c.period = period; c.startDate = start; if (periodChanged) c.createdDate = (c.createdDate && c.createdDate > today) ? c.createdDate : today; } }
-      else s.chores.push({ id: uid(), name, icon: ic, period, startDate: start, createdDate: today });
+      if (id) { const c = s.chores.find((x) => x.id === id); if (c) { const periodChanged = c.period !== period || startChanged; c.name = name; c.icon = ic; c.period = period; c.difficulty = dif; if (startChanged) c.startDate = start; if (periodChanged) c.createdDate = (c.createdDate && c.createdDate > today) ? c.createdDate : today; } }
+      else s.chores.push({ id: uid(), name, icon: ic, period, difficulty: dif, startDate: start, createdDate: today });
     });
     addingChore = false; editingChore = null; walletDraft = null;
     if (store.mode !== 'fb') afterStateChange();
@@ -999,7 +1043,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     runDraws();
   }
   function hearts() { const hero = $('#hero'); if (!hero) return; for (let i = 0; i < 5; i++) { const h = document.createElement('span'); h.className = 'heart'; h.textContent = '♥'; h.style.color = 'var(--red)'; h.style.left = (30 + Math.random() * 40) + '%'; h.style.top = '40%'; h.style.animationDelay = (i * 0.12) + 's'; hero.appendChild(h); setTimeout(() => h.remove(), 1800); } }
-  function go(r) { route = r; if (route !== 'wallet') walletDraft = null; addingChore = false; editingChore = null; resetArmed = false; switchArmed = false; fitOpen = null; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); if (reveal && !reveal.current) stepReveal(); }
+  function go(r) { route = r; if (route !== 'wallet') walletDraft = null; addingChore = false; editingChore = null; resetArmed = false; switchArmed = false; fitOpen = null; giftOpen = false; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); if (reveal && !reveal.current) stepReveal(); }
   setInterval(() => { if (state && me) runDraws(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && state && me) runDraws(); });
 
