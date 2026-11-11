@@ -290,9 +290,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     { name: '설거지', icon: 'dish', period: 1, difficulty: 2, startIn: 0 },
     { name: '화장실 청소', icon: 'toilet', period: 7, difficulty: 4, startIn: 0 },
   ];
-  // tokens: both start equal; completing a capsule earns (11 − partner's coins on it) × difficulty × 10; postponing costs difficulty × 100 and hands the capsule over
-  const START_TOKENS = 1000;
-  const TOKENS_PER_PP = 100;          // 100 tokens behind → +2%p on the next draw (max 20%p)
+  // tokens: both start equal; completing a capsule earns (11 − partner's coins on it) × difficulty; postponing costs difficulty × 20 and hands the capsule over
+  const START_TOKENS = 100;
+  const TOKENS_PER_PP = 10;           // 10 tokens behind → +2%p on the next draw (max 20%p)
+  const TOKEN_SCALE = 1;              // bump when the token formula changes; migrateTokensOf() rescales old rooms
   const DIFF_COLORS = { 1: '#5FBFA8', 2: '#7FB6E8', 3: '#F2C94C', 4: '#F5A742', 5: '#D1453A' };
   const DIFF_NAMES = { 1: '아주 쉬움', 2: '쉬움', 3: '보통', 4: '힘듦', 5: '아주 힘듦' };
   const choreDiff = (c) => clamp(Number(c && c.difficulty) || 3, 1, 5);
@@ -391,8 +392,18 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function drawKey(d, choreId) { return d + '_' + choreId; }
   function drawsOf(s) { return Object.values((s && s.draws) || {}); }
   function tokensOf(s) { const t = (s && s.tokens) || {}; return { A: typeof t.A === 'number' ? t.A : START_TOKENS, B: typeof t.B === 'number' ? t.B : START_TOKENS }; }
-  function rewardOf(s, who, choreId, difficulty) { return (11 - coinsOf(s, other(who), choreId)) * clamp(Number(difficulty) || 3, 1, 5) * 10; }
-  const postponeCost = (difficulty) => clamp(Number(difficulty) || 3, 1, 5) * 100;
+  function rewardOf(s, who, choreId, difficulty) { return (11 - coinsOf(s, other(who), choreId)) * clamp(Number(difficulty) || 3, 1, 5); }
+  const postponeCost = (difficulty) => clamp(Number(difficulty) || 3, 1, 5) * 20;
+  // rooms made before the formula change (rewards ×10, start 1000) are scaled down once
+  function migrateTokensOf(s) {
+    if (!s || s.tokenScale === TOKEN_SCALE) return false;
+    if (s.tokens || Object.values(s.draws || {}).some((r) => typeof r.reward === 'number') || (s.ledger || []).length) {
+      const tk = tokensOf(s); s.tokens = { A: Math.round(tk.A / 10), B: Math.round(tk.B / 10) };
+      for (const r of Object.values(s.draws || {})) if (typeof r.reward === 'number') r.reward = Math.round(r.reward / 10);
+      for (const l of (s.ledger || [])) if (typeof l.amount === 'number') l.amount = Math.round(l.amount / 10);
+    }
+    s.tokenScale = TOKEN_SCALE; return true;
+  }
   function calcProbOf(s, c, tk) {
     const ca = coinsOf(s, 'A', c.id), cb = coinsOf(s, 'B', c.id);
     const base = ca / (ca + cb);
@@ -424,6 +435,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const lastDate = ready ? today : addDays(today, -1);
     const cs = choresOf(s); const added = [];
     if (!s.draws) s.draws = {};
+    const migrated = migrateTokensOf(s);
     let start = s.lastProcessed ? addDays(s.lastProcessed, 1) : null;
     // a capsule added or re-scheduled after today's draw still gets today's draw
     for (const c of cs) { const st = (c.createdDate && c.createdDate > c.startDate) ? c.createdDate : c.startDate; if (!s.lastProcessed || st >= s.lastProcessed) { if (!start || st < start) start = st; } }
@@ -440,7 +452,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         added.push(k);
       }
     }
-    let changed = added.length > 0;
+    let changed = added.length > 0 || migrated;
     if (s.lastProcessed !== lastDate && lastDate >= (s.lastProcessed || '')) { s.lastProcessed = lastDate; changed = true; }
     return { added, changed };
   }
@@ -453,7 +465,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function moodFor(p) {
     if (doneFlash[p] > Date.now()) return 'done';
     const s = tokensAll(); const diff = s[other(p)] - s[p];
-    if (diff >= 600) return 'sleepy'; if (diff >= 250) return 'pout'; if (diff <= -250) return 'proud'; return 'calm';
+    if (diff >= 60) return 'sleepy'; if (diff >= 25) return 'pout'; if (diff <= -25) return 'proud'; return 'calm';
   }
   function ledgerOf(s) { return (s && s.ledger) || []; }
   function pushLedger(s, entry) { s.ledger = ledgerOf(s).slice(-300); s.ledger.push(Object.assign({ ts: Date.now(), date: dateStr(new Date()) }, entry)); }
@@ -789,13 +801,13 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const trackSec = '<section><div class="sec-head"><h2>다음에 떨어질 캡슐</h2><span class="sub">말판 트랙 · 가까운 순서</span></div>' + trackHTML(today, ready) + '</section>';
     const lead = s.A === s.B ? null : (s.A > s.B ? 'A' : 'B'); const diff = Math.abs(s.A - s.B); const max = Math.max(100, s.A, s.B);
     const pp = Math.min(20, Math.round(diff / TOKENS_PER_PP) * 2);
-    const giftForm = giftOpen ? '<div class="row nowrap" style="margin-top:10px;gap:8px"><input class="input num" type="number" inputmode="numeric" id="gift-amt" min="1" max="' + s[me] + '" step="10" value="100" style="width:110px" aria-label="보낼 토큰"><button class="btn mint sm" data-gift-send>' + esc(playerName(other(me))) + '에게 보내기</button><button class="btn ghost sm" data-gift-open>취소</button></div>' : '';
+    const giftForm = giftOpen ? '<div class="row nowrap" style="margin-top:10px;gap:8px"><input class="input num" type="number" inputmode="numeric" id="gift-amt" min="1" max="' + s[me] + '" step="5" value="10" style="width:110px" aria-label="보낼 토큰"><button class="btn mint sm" data-gift-send>' + esc(playerName(other(me))) + '에게 보내기</button><button class="btn ghost sm" data-gift-open>취소</button></div>' : '';
     const scoreSec = '<section class="card">' +
       '<div class="sec-head"><h2>토큰 잔액</h2><span class="sub">많이 벌수록 싫은 일을 많이 한 거예요</span></div>' +
       '<div class="score-row" style="margin-top:8px"><span class="lbl">' + esc(playerName('A')) + '</span><div class="tube"><div style="width:' + (s.A / max * 100) + '%;background:var(--a)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.A + '</span></div>' +
       '<div class="score-row" style="margin-top:6px"><span class="lbl">' + esc(playerName('B')) + '</span><div class="tube"><div style="width:' + (s.B / max * 100) + '%;background:var(--b)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.B + '</span></div>' +
       '<div style="font-size:15px;font-weight:700;margin-top:8px">' + (lead ? josa(esc(playerName(lead)), '이', '가') + ' 토큰 ' + diff + '개 앞서요' : '지금 딱 똑같아요') + '</div>' +
-      '<div class="muted" style="font-size:12px">' + (lead && pp > 0 ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + pp + '%p 올라가요' : '토큰 100개 차이마다 뒤처진 쪽이 2%p 더 잘 걸려요') + '</div>' +
+      '<div class="muted" style="font-size:12px">' + (lead && pp > 0 ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + pp + '%p 올라가요' : '토큰 10개 차이마다 뒤처진 쪽이 2%p 더 잘 걸려요') + '</div>' +
       '<div class="row nowrap" style="margin-top:10px;justify-content:space-between"><span class="muted" style="font-size:11px">고마우면 토큰으로 양보할 수 있어요</span>' + (giftOpen ? '' : '<button class="btn sm" data-gift-open>토큰 보내기</button>') + '</div>' + giftForm + '</section>';
     return hero + (banner ? '<section>' + banner + '</section>' : '') + notice + todaySec + pendingSec + trackSec + scoreSec;
   }
@@ -895,7 +907,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     }).join('');
     return '<section><div class="sec-head"><h2>말판 위 캡슐 ' + chores().length + '개</h2><span class="sub">캡슐 하나 = 집안일 하나</span></div>' + (list || '<div class="card soft empty">아직 캡슐이 없어요</div>') +
       (addingChore ? choreForm(null) : '<button class="btn red" data-add-chore>+ 캡슐 추가</button>') + '</section>' +
-      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도 × 10, 미루기 = 난이도 × 100 토큰이에요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
+      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도, 미루기 = 난이도 × 20 토큰이에요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
   }
   function choreForm(c) {
     const isNew = !c; const today = dateStr(new Date()); const d = c || { name: '', icon: 'dish', period: 3, startDate: today, difficulty: 3 };
@@ -921,13 +933,13 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const left = total - used;
     const rows = cs.map((c) => {
       const v = walletDraft[c.id]; const coins = []; for (let i = 1; i <= 10; i++) coins.push('<span class="coin' + (i <= v ? ' on' : '') + '"></span>');
-      return '<div class="card flat" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap"><span style="display:inline-flex">' + icon(c.icon, 20) + '</span><div class="grow"><div style="font-weight:700">' + esc(c.name) + ' <span class="pill" style="background:' + DIFF_COLORS[choreDiff(c)] + ';color:#2B2622;font-size:10px">난이도 ' + choreDiff(c) + '</span></div><div class="muted" style="font-size:11px">' + (v <= 3 ? '정말 싫어요' : v <= 5 ? '그냥 그래요' : v <= 7 ? '괜찮아요' : '해도 돼요') + ' · ' + esc(playerName(other(me))) + '가 하면 <b class="num">+' + ((11 - v) * choreDiff(c) * 10) + ' 토큰</b></div></div>' +
+      return '<div class="card flat" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap"><span style="display:inline-flex">' + icon(c.icon, 20) + '</span><div class="grow"><div style="font-weight:700">' + esc(c.name) + ' <span class="pill" style="background:' + DIFF_COLORS[choreDiff(c)] + ';color:#2B2622;font-size:10px">난이도 ' + choreDiff(c) + '</span></div><div class="muted" style="font-size:11px">' + (v <= 3 ? '정말 싫어요' : v <= 5 ? '그냥 그래요' : v <= 7 ? '괜찮아요' : '해도 돼요') + ' · ' + esc(playerName(other(me))) + '가 하면 <b class="num">+' + ((11 - v) * choreDiff(c)) + ' 토큰</b></div></div>' +
         '<div class="stepper"><button type="button" data-coin="' + esc(c.id) + ':-1" aria-label="동전 빼기" ' + (v <= 1 ? 'disabled' : '') + '>−</button><span class="v num">' + v + '</span><button type="button" data-coin="' + esc(c.id) + ':1" aria-label="동전 넣기" ' + (v >= 10 || left <= 0 ? 'disabled' : '') + '>+</button></div></div>' +
         '<div class="coinrow" aria-hidden="true">' + coins.join('') + '</div></div>';
     }).join('');
     const status = left === 0 ? '<span class="pill mint">동전을 다 썼어요 · 저장할 수 있어요</span>' : left > 0 ? '<span class="pill gold num">남은 동전 ' + left + '개 · 다 써야 저장돼요</span>' : '<span class="pill red num">동전을 ' + (-left) + '개 더 썼어요 · 그만큼 빼 주세요</span>';
     return '<section><div class="sec-head"><h2>' + esc(playerName(me)) + '의 동전 지갑</h2><span class="sub num">' + used + ' / ' + total + '</span></div>' +
-      '<div class="notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div>동전을 <b>많이</b> 넣은 일은 "그래도 괜찮은 일"이라 내가 더 자주 걸려요. <b>싫은 일엔 동전을 아끼면</b> 나는 드물게 걸리고, 대신 ' + esc(playerName(other(me))) + '가 그 일을 해 주면 토큰을 많이 받아요(싫어하는 만큼 × 난이도 × 10).</div></div>' +
+      '<div class="notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div>동전을 <b>많이</b> 넣은 일은 "그래도 괜찮은 일"이라 내가 더 자주 걸려요. <b>싫은 일엔 동전을 아끼면</b> 나는 드물게 걸리고, 대신 ' + esc(playerName(other(me))) + '가 그 일을 해 주면 토큰을 많이 받아요(싫어하는 만큼 × 난이도).</div></div>' +
       '<div>' + status + '</div>' + (rows || '<div class="card soft empty">말판에 캡슐이 없어요. 먼저 캡슐을 추가해 주세요.</div>') + '</section>' +
       (cs.length ? '<section><div class="row nowrap"><button class="btn" data-wallet-even>똑같이 나누기</button><button class="btn mint grow" data-wallet-save ' + (left !== 0 ? 'disabled' : '') + ' style="min-height:50px">이대로 저장</button></div>' +
         '<p class="rule">규칙: 동전은 집안일 수 × 5개(' + total + '개). 캡슐마다 1~10개, 남김 없이. 두 사람 동전 합이 같아서 서로 공평해요.</p></section>' : '');
@@ -951,7 +963,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const days = Object.keys(byDate).sort().reverse().slice(0, 60).map((d) => '<div class="hist-day"><div class="d">' + fmtDate(d, true) + '</div>' + byDate[d].sort((a, b) => b.ts - a.ts).map(item).join('') + '</div>').join('');
     return '<section class="card"><h2>이번 달 영수증</h2>' +
       '<div class="row" style="justify-content:space-between;margin-top:6px"><div><div class="muted" style="font-size:12px">' + esc(playerName('A')) + ' · 번 토큰</div><div class="num" style="font-size:22px;font-weight:700;color:var(--a)">+' + ms.A + ' <span style="font-size:12px;color:var(--muted)">완수 ' + cnt.A + '개</span></div></div><div style="text-align:right"><div class="muted" style="font-size:12px">' + esc(playerName('B')) + ' · 번 토큰</div><div class="num" style="font-size:22px;font-weight:700;color:var(--b-text)">+' + ms.B + ' <span style="font-size:12px;color:var(--muted)">완수 ' + cnt.B + '개</span></div></div></div>' +
-      '<p class="rule" style="margin-top:8px">잔액 ' + s.A + ' : ' + s.B + ' · 완수 토큰 = 상대가 싫어하는 정도 × 난이도 × 10. 양보와 미루기도 여기에 기록돼요.</p></section>' +
+      '<p class="rule" style="margin-top:8px">잔액 ' + s.A + ' : ' + s.B + ' · 완수 토큰 = 상대가 싫어하는 정도 × 난이도. 양보와 미루기도 여기에 기록돼요.</p></section>' +
       '<section class="card">' + days + '</section>';
   }
 
@@ -973,10 +985,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       '<section class="card flat"><h2 style="margin-bottom:6px">규칙 한 장</h2><p class="rule">' +
       '<b>1. 주기</b> — 캡슐은 자기 주기만큼 말판을 돌고, 돌아온 날 추첨 시각에 떨어져요.<br>' +
       '<b>2. 동전 지갑</b> — 각자 동전 5×(캡슐 수)개를 1~10개씩 나눠 넣어요. 서로의 지갑은 안 보여요.<br>' +
-      '<b>3. 토큰</b> — 둘 다 ' + START_TOKENS + '개로 시작. 캡슐을 완수하면 (상대가 그 일을 싫어하는 정도 1~10) × 난이도(1~5) × 10 토큰을 벌어요.<br>' +
-      '<b>4. 미루기·양보</b> — 뽑힌 캡슐을 난이도 × 100 토큰 내고 상대에게 넘길 수 있어요(토큰은 상대에게 가요). 고마우면 토큰을 보내서 양보할 수도 있어요.<br>' +
-      '<b>5. 확률</b> — 동전을 더 넣은 쪽이 더 잘 걸리고, 토큰이 뒤처진 쪽은 100개당 2%p(최대 20%p) 더 잘 걸려요. 15~85% 사이에서만 움직여요.<br>' +
-      '<b>6. 표정</b> — 상대보다 토큰 250개 뒤면 삐지고, 600개 뒤면 졸아요. 250개 앞서면 뿌듯해해요.</p></section>' +
+      '<b>3. 토큰</b> — 둘 다 ' + START_TOKENS + '개로 시작. 캡슐을 완수하면 (상대가 그 일을 싫어하는 정도 1~10) × 난이도(1~5) 토큰을 벌어요. 최대 50.<br>' +
+      '<b>4. 미루기·양보</b> — 뽑힌 캡슐을 난이도 × 20 토큰 내고 상대에게 넘길 수 있어요(토큰은 상대에게 가요). 고마우면 토큰을 보내서 양보할 수도 있어요.<br>' +
+      '<b>5. 확률</b> — 동전을 더 넣은 쪽이 더 잘 걸리고, 토큰이 뒤처진 쪽은 10개당 2%p(최대 20%p) 더 잘 걸려요. 15~85% 사이에서만 움직여요.<br>' +
+      '<b>6. 표정</b> — 상대보다 토큰 25개 뒤면 삐지고, 60개 뒤면 졸아요. 25개 앞서면 뿌듯해해요.</p></section>' +
       '<section><button class="btn" data-reset style="color:var(--red)">' + (resetArmed ? '정말 전부 지울까요? 다시 누르면 지워져요' : '기계 초기화 (전부 지우기)') + '</button></section>';
   }
 
