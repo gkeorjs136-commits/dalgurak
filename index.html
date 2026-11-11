@@ -189,7 +189,9 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 
 .nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); background: var(--paper); border-top: 2px solid var(--line); }
 .nav-inner { width: 100%; max-width: 480px; display: flex; justify-content: space-around; align-items: center; height: 64px; padding: 0 8px; }
-.tab { height: 46px; padding: 0 12px; border-radius: 14px; border: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.tab { height: 46px; padding: 0 9px; border-radius: 14px; border: 2px solid transparent; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.tab .cnt { background: var(--red); color: var(--red-ink); font-size: 10px; min-width: 16px; height: 16px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; }
+.tab.on .cnt { background: var(--paper); color: var(--red); }
 .tab.on { background: var(--red); color: var(--red-ink); border-color: var(--line); }
 .tab svg { width: 18px; height: 18px; flex-shrink: 0; }
 
@@ -553,7 +555,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     for (let i = colors.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = colors[i]; colors[i] = colors[j]; colors[j] = t; }
     const marbles = MARBLE_POS.map((p, i) => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="8" fill="' + colors[i] + '" stroke="var(--line)" stroke-width="1.5"/>').join('');
     const L = 'stroke="var(--line)" stroke-width="2.5"';
-    const outlet = (opts.capsules || []).map((c, i) => '<g transform="translate(' + (50 + i * 32) + ' 214)"><path d="M0 14 a14 14 0 0 1 28 0 z" fill="' + c + '" stroke="var(--line)" stroke-width="2"/><path d="M0 14 a14 14 0 0 0 28 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><line x1="0" y1="14" x2="28" y2="14" stroke="var(--line)" stroke-width="1.5"/></g>').join('');
+    const outlet = (opts.capsules || []).map((c, i) => '<g transform="translate(' + (50 + i * 32) + ' 214)"><path d="M0 14 a14 14 0 0 1 28 0 z" fill="' + c + '" stroke="var(--line)" stroke-width="2"/><path d="M5 11 a9 9 0 0 1 6 -6" fill="none" stroke="#FFFFFF" stroke-opacity=".6" stroke-width="2.2" stroke-linecap="round"/><path d="M0 14 a14 14 0 0 0 28 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><rect x="-1" y="12.8" width="30" height="2.6" rx="1.3" fill="var(--line)"/></g>').join('');
     const textW = (str, fs) => { let w = 0; for (const ch of str) w += /[가-힣ㄱ-ㅎ]/.test(ch) ? fs : /[0-9%]/.test(ch) ? fs * 0.62 : fs * 0.4; return w; };
     const dispText = (str, y, fs) => '<text x="93" y="' + y + '" font-size="' + fs + '" font-weight="700" text-anchor="middle" fill="var(--bg)" font-family="var(--font)"' + (textW(str, fs) > 104 ? ' textLength="104" lengthAdjust="spacingAndGlyphs"' : '') + '>' + esc(str) + '</text>';
     const text = lines.length === 1 ? dispText(lines[0], 173, 14) : dispText(lines[0], 165, 12) + dispText(lines[1], 180, 12);
@@ -672,6 +674,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (!me) { app.innerHTML = topbar(false) + '<main>' + viewRolePick() + '</main>'; bind(); return; }
     let body = '';
     switch (route) {
+      case 'mine': body = viewMine(); break;
       case 'board': body = viewBoard(); break;
       case 'wallet': body = viewWallet(); break;
       case 'history': body = viewHistory(); break;
@@ -699,8 +702,9 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const t = (id, label, svg) => '<button class="tab' + (route === id ? ' on' : '') + '" data-go="' + id + '"' + (route === id ? ' aria-current="page"' : '') + '>' + svg + label + '</button>';
     return '<nav class="nav" aria-label="주 메뉴"><div class="nav-inner">' +
       t('today', '오늘', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M4 12a8 8 0 0 1 16 0z"/><rect x="3" y="12" width="18" height="8" rx="3"/></svg>') +
+      t('mine', '내 일' + (myTodoCount() ? ' <span class="cnt num">' + myTodoCount() + '</span>' : ''), '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>') +
       t('board', '말판', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="3" y="7" width="5" height="10" rx="1.5"/><rect x="9.5" y="7" width="5" height="10" rx="1.5"/><rect x="16" y="7" width="5" height="10" rx="1.5"/></svg>') +
-      t('wallet', '동전 지갑', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>') +
+      t('wallet', '지갑', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>') +
       t('history', '기록', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>') +
       '</div></nav>';
   }
@@ -798,7 +802,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function capsuleCard(r) {
     const k = drawKey(r.date, r.choreId); const mine = r.who === me; const today = dateStr(new Date());
     const whoCls = r.who.toLowerCase(); const dif = choreDiff(r); const reward = r.done && typeof r.reward === 'number' ? r.reward : rewardOf(state, r.who, r.choreId, dif); const cost = postponeCost(dif); const tk = tokensAll();
-    const capSvg = '<svg class="cap-icon" viewBox="0 0 44 44" role="img" aria-label="난이도 ' + dif + '"><path d="M4 22 a18 18 0 0 1 36 0 z" fill="' + DIFF_COLORS[dif] + '" stroke="var(--line)" stroke-width="2"/><path d="M4 22 a18 18 0 0 0 36 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(13 24) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[r.icon] || ICONS.dish) + '</g></svg>';
+    const capSvg = '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center;width:52px;height:58px">' + capsuleSVG(r.icon, DIFF_COLORS[dif], 50, { label: '난이도 ' + dif + ' 캡슐', done: !!r.done }) + '</span>';
     let action;
     if (r.done) action = '<span class="pill mint">완료</span>';
     else if (mine) action = '<div style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><button class="btn mint sm" data-done="' + esc(k) + '">다 했어요</button><button class="btn sm" data-postpone="' + esc(k) + '" ' + (tk[me] < cost ? 'disabled' : '') + ' title="토큰 ' + cost + '개 내고 ' + esc(playerName(other(me))) + '에게 넘기기">미루기 −' + cost + '</button></div>';
@@ -833,7 +837,48 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     return html + '</div>';
   }
   function diffChips(attrPrefix, cur) { return [1, 2, 3, 4, 5].map((n) => '<button type="button" class="swatch' + (cur === n ? ' on' : '') + '" aria-pressed="' + (cur === n) + '" ' + attrPrefix + n + '" aria-label="난이도 ' + n + ' ' + DIFF_NAMES[n] + '" title="' + DIFF_NAMES[n] + '" style="background:' + DIFF_COLORS[n] + ';width:36px;height:36px;box-shadow:none;font-size:13px;font-weight:700;color:#2B2622">' + n + '</button>').join(''); }
-  function capsuleMini(ic, lid) { return '<svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><path d="M4 20 a16 16 0 0 1 32 0 z" fill="' + (lid || 'var(--track)') + '" stroke="var(--line)" stroke-width="2"/><path d="M4 20 a16 16 0 0 0 32 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/><g transform="translate(11 21) scale(0.75)" stroke="var(--line)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[ic] || ICONS.dish) + '</g></svg>'; }
+  // glossy two-tone capsule: colored lid with highlight, paper bottom with inner shade, seam band, icon in a soft disc
+  function capsuleSVG(ic, lid, size, opts) {
+    opts = opts || {}; const s = size || 44; lid = lid || 'var(--track)';
+    return '<svg width="' + s + '" height="' + Math.round(s * 1.14) + '" viewBox="0 0 44 50" role="img" aria-label="' + esc(opts.label || '캡슐') + '"' + (opts.cls ? ' class="' + opts.cls + '"' : '') + '>' +
+      '<ellipse cx="22" cy="46.5" rx="14" ry="2.6" fill="var(--line)" opacity=".16"/>' +
+      '<path d="M4 22 a18 18 0 0 1 36 0 z" fill="' + lid + '" stroke="var(--line)" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M10 16.5 a13 13 0 0 1 9.5 -8.5" fill="none" stroke="#FFFFFF" stroke-opacity=".6" stroke-width="3" stroke-linecap="round"/>' +
+      '<circle cx="31" cy="10.5" r="1.7" fill="#FFFFFF" fill-opacity=".85"/>' +
+      '<path d="M4 22 a18 18 0 0 0 36 0 z" fill="var(--paper)" stroke="var(--line)" stroke-width="2" stroke-linejoin="round"/>' +
+      '<path d="M7.5 25 a15 15 0 0 0 29 0" fill="none" stroke="var(--line)" stroke-opacity=".10" stroke-width="4"/>' +
+      '<rect x="2" y="20.3" width="40" height="3.4" rx="1.7" fill="var(--line)"/>' +
+      '<circle cx="22" cy="31.5" r="8.2" fill="var(--track)"/>' +
+      '<g transform="translate(15.4 24.9) scale(0.55)" stroke="var(--line)" stroke-width="2.7" fill="none" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[ic] || ICONS.dish) + '</g>' +
+      (opts.done ? '<circle cx="35.5" cy="37.5" r="7" fill="var(--mint)" stroke="var(--line)" stroke-width="1.5"/><path d="M32 37.5 l2.4 2.4 l4.8 -4.8" fill="none" stroke="var(--mint-ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' : '') +
+      '</svg>';
+  }
+  function capsuleMini(ic, lid) { return capsuleSVG(ic, lid, 28); }
+
+  // ----- mine (personal to-do) -----
+  function myTodos() { const today = dateStr(new Date()); return drawsOf(state).filter((r) => r.who === me && !r.done && daysBetween(r.date, today) <= 30).sort((a, b) => a.date.localeCompare(b.date) || a.ts - b.ts); }
+  function myTodoCount() { return (state && me) ? myTodos().length : 0; }
+  function viewMine() {
+    const today = dateStr(new Date()); const ready = timeStr(new Date()) >= (state.drawTime || '08:00'); const from = ready ? addDays(today, 1) : today;
+    const s = tokensAll(); const mood = moodFor(me); const todos = myTodos();
+    const all = drawsOf(state);
+    const doneToday = all.filter((r) => r.who === me && r.done && r.date === today).sort((a, b) => b.doneAt - a.doneAt);
+    const weekStart = addDays(today, -6); const weekDone = all.filter((r) => r.who === me && r.done && r.date >= weekStart);
+    const weekTokens = weekDone.reduce((a, r) => a + (r.reward || 0), 0);
+    const overdue = todos.filter((r) => r.date < today).length;
+    const head = '<section class="card" style="display:flex;gap:14px;align-items:center"><div style="width:96px;flex-shrink:0">' + charSVG(me, mood) + '</div><div class="grow" style="min-width:0">' +
+      '<div style="font-size:20px;font-weight:700">' + esc(playerName(me)) + '</div>' +
+      '<div class="num" style="font-size:15px;font-weight:700;color:' + (me === 'A' ? 'var(--a)' : 'var(--b-text)') + '">토큰 ' + s[me] + '개</div>' +
+      '<div class="muted" style="font-size:12px;margin-top:4px">' + esc(lineFor(me, mood)) + '</div>' +
+      '<div class="muted" style="font-size:12px">이번 주 완수 ' + weekDone.length + '개 · +' + weekTokens + ' 토큰</div></div></section>';
+    const todoSec = '<section><div class="sec-head"><h2>지금 해야 할 일 ' + (todos.length ? '<span class="pill red num">' + todos.length + '</span>' : '') + '</h2>' + (overdue ? '<span class="sub" style="color:var(--red)">밀린 캡슐 ' + overdue + '개</span>' : '<span class="sub">' + fmtDate(today, true) + '</span>') + '</div>' +
+      (todos.length ? todos.map(capsuleCard).join('') : '<div class="card soft empty">지금 할 일이 없어요. 쉬어도 돼요!</div>') + '</section>';
+    const doneSec = doneToday.length ? '<section><div class="sec-head"><h2>오늘 끝낸 일</h2><span class="sub num">+' + doneToday.reduce((a, r) => a + (r.reward || 0), 0) + ' 토큰</span></div>' + doneToday.map(capsuleCard).join('') + '</section>' : '';
+    const items = []; for (const c of chores()) { const d = nextDue(c, from); if (d) items.push({ c, d }); } items.sort((a, b) => a.d.localeCompare(b.d));
+    const upcoming = items.slice(0, 6).map((it) => { const r = calcProb(it.c, s); const pm = me === 'A' ? pct(r.pA) : 100 - pct(r.pA); return '<div class="hist-item"><span style="display:inline-flex">' + capsuleSVG(it.c.icon, DIFF_COLORS[choreDiff(it.c)], 26, { label: it.c.name }) + '</span><div class="t"><div><b>' + esc(it.c.name) + '</b> <span class="muted">' + relDay(it.d, today) + '</span></div><div class="r">내가 걸릴 확률 ' + pm + '% · 내가 하면 +' + rewardOf(state, me, it.c.id, choreDiff(it.c)) + ' 토큰</div></div><span class="pill num" style="flex-shrink:0">' + pm + '%</span></div>'; }).join('');
+    const upSec = items.length ? '<section class="card"><div class="sec-head"><h2>다음에 나한테 올 확률</h2><span class="sub">지금 기준</span></div>' + upcoming + '</section>' : '';
+    return head + todoSec + doneSec + upSec;
+  }
 
   // ----- board -----
   function viewBoard() {
@@ -842,7 +887,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const list = chores().map((c) => {
       if (editingChore === c.id) return choreForm(c);
       const d = nextDue(c, from); const r = calcProb(c, s); const dif = choreDiff(c);
-      return '<article class="card capsule-card">' + '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center">' + capsuleMini(c.icon, DIFF_COLORS[dif]).replace('width="28" height="28"', 'width="40" height="40"') + '</span>' +
+      return '<article class="card capsule-card">' + '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:54px">' + capsuleSVG(c.icon, DIFF_COLORS[dif], 44, { label: '난이도 ' + dif + ' 캡슐' }) + '</span>' +
         '<div class="info"><div class="title"><span>' + esc(c.name) + '</span><span class="pill">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span><span class="pill" style="background:' + DIFF_COLORS[dif] + ';color:#2B2622">난이도 ' + dif + '</span></div>' +
         '<div class="reason">' + (d ? '다음 추첨 ' + relDay(d, today) + ' (' + fmtDate(d, true) + ')' : '') + ' · 내가 하면 +' + rewardOf(state, me, c.id, dif) + ' 토큰 · 미루기 ' + postponeCost(dif) + '</div>' +
         '<div class="pbar" style="height:8px">' + pbarInner(r.pA, r.base) + '</div></div>' +
