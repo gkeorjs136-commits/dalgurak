@@ -134,6 +134,36 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .char.proud .body { animation: hop 1.6s ease-in-out infinite; }
 .char.done .body { animation: jump .6s ease-out; }
 .char.calm .body { animation: breathe 3s ease-in-out infinite; }
+/* outfit-change gestures: arms swing in from --from (resting) to the posed shape, hold, swing back; --ge resumes mid-way after a re-render */
+.char .arm, .char .head, .char .head-back, .char .body { transform-box: view-box; }
+.char.g-hair, .char.g-acc { --from: 170deg; }
+.char.g-skin { --from: 160deg; }
+.char.g-top { --from: 70deg; }
+.char.g-random { --from: 150deg; }
+.char.g-hair .arm-r, .char.g-acc .arm-r, .char.g-skin .arm-r, .char.g-top .arm-r, .char.g-random .arm-r { animation: swingR 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); }
+.char.g-skin .arm-l, .char.g-top .arm-l, .char.g-random .arm-l { animation: swingL 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); }
+@keyframes swingR { 0% { transform: rotate(var(--from)); opacity: 0 } 12% { opacity: 1 } 30% { transform: rotate(0deg) } 45% { transform: rotate(-9deg) } 60%, 82% { transform: rotate(0deg) } 88% { opacity: 1 } 100% { transform: rotate(var(--from)); opacity: 0 } }
+@keyframes swingL { 0% { transform: rotate(calc(-1 * var(--from))); opacity: 0 } 12% { opacity: 1 } 30% { transform: rotate(0deg) } 45% { transform: rotate(9deg) } 60%, 82% { transform: rotate(0deg) } 88% { opacity: 1 } 100% { transform: rotate(calc(-1 * var(--from))); opacity: 0 } }
+/* the resting arm cross-fades with the posed one, so the first and last frames equal the normal drawing (no pop) */
+.char .arm-rest { animation: restFade 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); }
+@keyframes restFade { 0%, 100% { opacity: 1 } 15%, 85% { opacity: 0 } }
+@media (prefers-reduced-motion: reduce) {
+  .char .arm, .char .head, .char .head-back, .char .body, .char .arm-rest { animation: none !important; }
+  .char .arm-rest { opacity: 0; }
+  .fit-head .say, .gspark path { animation: none !important; opacity: 1; transform: none; }
+}
+.char.g-hair .head, .char.g-hair .head-back, .char.g-acc .head, .char.g-acc .head-back { animation: tilt 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); }
+@keyframes tilt { 0%, 100% { transform: rotate(0deg) } 35%, 80% { transform: rotate(-7deg) } }
+.char.g-skin .head, .char.g-skin .head-back { animation: nod 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); }
+@keyframes nod { 0%, 100% { transform: rotate(0deg) } 35% { transform: rotate(5deg) } 65% { transform: rotate(-5deg) } }
+.char.g-bottom .body, .char.g-accent .body { animation: hop2 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); }
+@keyframes hop2 { 0%, 100% { transform: translateY(0) } 20% { transform: translateY(-9px) } 40% { transform: translateY(0) } 55% { transform: translateY(-5px) } 70% { transform: translateY(0) } }
+.char.g-top .body { animation: wiggle2 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); transform-origin: 50px 120px; }
+@keyframes wiggle2 { 0%, 100% { transform: rotate(0deg) } 25% { transform: rotate(-5deg) } 50% { transform: rotate(5deg) } 75% { transform: rotate(-3deg) } }
+.char.g-random .body { animation: flip 1.2s ease-in-out both; animation-delay: var(--ge, 0ms); transform-origin: 50px 90px; }
+@keyframes flip { 0% { transform: scaleX(1) translateY(0) } 35% { transform: scaleX(-1) translateY(-6px) } 70%, 100% { transform: scaleX(1) translateY(0) } }
+.gspark path { transform-box: fill-box; transform-origin: center; animation: sparkle .9s ease-out both; }
+@keyframes sparkle { 0% { transform: scale(0); opacity: 0 } 40% { transform: scale(1.3); opacity: 1 } 100% { transform: scale(.5); opacity: 0 } }
 .zz { animation: floatz 2.5s ease-in-out infinite; }
 .spark { animation: twinkle 1.4s ease-in-out infinite; } .spark.s2 { animation-delay: .7s; }
 @keyframes hop { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-3px) } }
@@ -262,7 +292,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wallet-bar .big.ok { color: var(--mint); } }
 .wallet-bar .pill { white-space: normal; text-align: left; line-height: 1.25; }
 .card.has-stick { overflow: clip; }
-.fit-head { display: flex; gap: 12px; align-items: center; }
+.fit-head { display: flex; gap: 12px; align-items: center; position: relative; }
+.fit-head.stick { position: sticky; }   /* .fit-head's relative must not override the frozen strip */
+.fit-head .say { position: absolute; left: 84px; top: 4px; z-index: 1; background: var(--ink); color: var(--bg); font-size: 12px; font-weight: 700; line-height: 1.3; padding: 6px 10px; border-radius: 14px 14px 14px 4px; max-width: calc(100% - 92px); word-break: keep-all; animation: saypop 1.25s ease-in-out both; pointer-events: none; }
+@keyframes saypop { 0% { opacity: 0; transform: translateY(6px) scale(.8) } 12%, 85% { opacity: 1; transform: translateY(0) scale(1) } 100% { opacity: 0; transform: translateY(-4px) scale(.95) } }
 .fit-head.stick { background: var(--paper); margin: -12px -14px 0; padding: 10px 14px; border-bottom: 1.5px dashed var(--track); }
 @supports not (overflow: clip) { .fit-head.stick { margin: 0; padding: 0 0 8px; } }
 @media (max-height: 560px) { .fit-head.stick { position: static; } }
@@ -403,6 +436,20 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   let busy = false;
   let switchArmed = false;
   let fitOpen = null;        // which player's outfit editor is open in settings
+  let gesture = null;        // { id, p, kind, at }: the character reacts to the piece that was just changed (hair → touches hair, …)
+  const GESTURE_OF = { hair: 'hair', hairColor: 'hair', top: 'top', topColor: 'top', bottom: 'bottom', bottomColor: 'bottom', acc: 'acc', accColor: 'acc', skin: 'skin', accent: 'accent', random: 'random' };
+  // 주접: what the character says about the new piece
+  const GESTURE_LINES = {
+    hair: ['이 머리… 나 연예인 아니야?', '머릿결 봐, 광고 찍어야 돼', '머리 바꾸니까 얼굴이 다 하네'],
+    top: ['이 옷, 나 입으라고 만든 듯', '옷이 날개? 내가 날개지', '오늘 룩 완성. 반칙이다 반칙'],
+    bottom: ['이 핏… 런웨이 걸어도 되겠어', '하의 바꿨더니 비율 미쳤다', '다리 길이 실화? 하의 덕 아님 나 덕'],
+    acc: ['이거 하나로 분위기 끝', '소품 하나에 이 완성도, 나 천재', '멋있는 거 나도 알아'],
+    skin: ['피부 봐, 광이 난다 광이', '요즘 뭐 발라? 그냥 타고난 거지', '이 피부엔 뭘 입어도 되지'],
+    accent: ['포인트 색 센스 봐', '디테일에서 급이 달라지지', '이 색 하나로 분위기 반전'],
+    random: ['랜덤인데 이렇게 잘 어울려?', '뭘 입어도 되는 사람, 그게 나', '아무거나 입어도 화보네'],
+  };
+  function gestureLine(p) { if (!gesture || gesture.p !== p || (gesture.at && Date.now() - gesture.at >= 1250) || !(!state || (route === 'settings' && fitOpen === p))) return ''; const arr = GESTURE_LINES[gesture.kind] || []; return arr.length ? arr[gesture.n % arr.length] : ''; }
+  function sayHTML(p) { const t = gestureLine(p); if (!t) return ''; const el = gesture.at ? Date.now() - gesture.at : 0; return '<div class="say" role="status" style="animation-delay:-' + el + 'ms">' + esc(t) + '</div>'; }   // negative delay keeps the bubble in step across re-renders
   let giftOpen = false;
   let quickOpen = false;     // one-off capsule form on the today screen
   let calMonth = null;       // 'YYYY-MM' shown on the calendar screen
@@ -557,44 +604,87 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const skin = pl.skin;
     const L = 'stroke="var(--line)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
     const F = 'stroke="var(--face)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
-    let arms, eyes, brows, mouth, extra = '', cheeks = '';
+    // arms: shoulder → elbow → hand, drawn as one outlined polyline (sleeve in the top colour, forearm and hand in skin)
+    const POSE = {
+      calm: { l: [[31, 84], [31, 97]], r: [[69, 84], [69, 97]] },
+      sleepy: { l: [[29, 84], [27, 98]], r: [[71, 84], [73, 98]] },
+      pout: { l: [[40, 93], [62, 91]], r: [[60, 81], [40, 83]] },        // crossed: right forearm on top, left below
+      proud: { l: [[28, 84], [24, 95]], r: [[76, 58], [78, 46]] },       // one fist up
+      done: { l: [[24, 58], [22, 46]], r: [[76, 58], [78, 46]] },        // both up
+    };
+    // outfit-change gestures (settings / onboarding): what the character does with the new piece
+    const GPOSE = {
+      hair: { r: [[80, 52], [70, 30]] },                                  // hand up to the hair, head tilts
+      acc: { r: [[80, 52], [68, 38]] },                                   // adjusting glasses / hat, beside the eye
+      skin: { l: [[22, 60], [36, 50]], r: [[78, 60], [64, 50]] },         // hands on cheeks
+      top: { l: [[20, 80], [10, 72]], r: [[80, 80], [90, 72]] },          // "look at my shirt"
+      bottom: { l: [[27, 84], [23, 97]], r: [[73, 84], [77, 97]] },       // little hop
+      random: { l: [[24, 56], [22, 44]], r: [[76, 56], [78, 44]] },       // spin with both arms up
+      accent: {},
+    };
+    // the gesture only plays in the outfit editor (onboarding, or my open editor in settings), never on the hero
+    let G = null;
+    if (gesture && gesture.p === p && GPOSE[gesture.kind] && (!state || (route === 'settings' && fitOpen === p))) {
+      if (!gesture.at) {
+        gesture.at = Date.now(); const id = gesture.id, kind = gesture.kind;
+        // when it ends, swap just the character (and its bubble) back to normal in place, so typing in a name field is never disturbed
+        setTimeout(() => {
+          if (!(gesture && gesture.id === id)) return;
+          gesture = null;
+          const plNow = (!state && onb.draft) ? onb.draft.players[p === 'A' ? 0 : 1] : undefined;
+          document.querySelectorAll('svg.char.g-' + kind).forEach((el) => { el.outerHTML = charSVG(p, mood, plNow); });
+          document.querySelectorAll('.fit-head .say').forEach((el) => el.remove());
+        }, 1300);
+      }
+      if (Date.now() - gesture.at < 1250) G = gesture;
+    }
+    const base = POSE[mood] || POSE.calm; const gp = G ? GPOSE[G.kind] : {};
+    const armSVG = (side, pts, cls) => { const sh = side === 'l' ? [34, 70] : [66, 70]; const [el, hd] = pts; return '<g class="' + cls + '" style="transform-origin:' + sh[0] + 'px ' + sh[1] + 'px"><path d="M' + sh + ' L' + el + ' L' + hd + '" fill="none" stroke="var(--line)" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M' + el + ' L' + hd + '" fill="none" stroke="' + skin + '" stroke-width="5.5" stroke-linecap="round"/><path d="M' + sh + ' L' + el + '" fill="none" stroke="' + pl.topColor + '" stroke-width="5.5" stroke-linecap="round"/><circle cx="' + hd[0] + '" cy="' + hd[1] + '" r="4" fill="' + skin + '" stroke="var(--line)" stroke-width="2"/></g>'; };
+    // a posed side gets the resting arm underneath too; the two cross-fade so the gesture starts and ends on the normal drawing
+    const armOf = (side) => gp[side] ? armSVG(side, base[side], 'arm-rest arm-rest-' + side) + armSVG(side, gp[side], 'arm arm-' + side) : armSVG(side, base[side], 'arm arm-' + side);
+    const arms = armOf('l') + armOf('r');
+    const star = (x, y) => '<path d="M' + x + ' ' + (y - 5) + ' l1.6 3.4 3.4 1.6 -3.4 1.6 -1.6 3.4 -1.6 -3.4 -3.4 -1.6 3.4 -1.6z" fill="var(--gold)"';
+    const heart = (x, y) => '<path d="M' + x + ' ' + y + ' c-4 -4 -8 0 -4 4 l4 4 l4 -4 c4 -4 0 -8 -4 -4z" fill="var(--red)"';
+    const spark = G ? '<g class="gspark">' + [star(14, 26), heart(86, 24), star(22, 100), heart(10, 60), star(88, 92), heart(90, 56)].map((d, i) => d + ' style="animation-delay:calc(var(--ge, 0ms) + ' + (i * 90) + 'ms)"/>').join('') + '</g>' : '';
+    let eyes, brows, mouth, extra = '', cheeks = '';
     switch (mood) {
       case 'sleepy':
-        arms = '<path d="M34 70 L28 96" fill="none" ' + L + '/><path d="M66 70 L72 96" fill="none" ' + L + '/>';
-        eyes = '<path d="M40 40 q4 4 8 0" fill="none" ' + L + '/><path d="M52 40 q4 4 8 0" fill="none" ' + L + '/>';
+        eyes ='<path d="M40 40 q4 4 8 0" fill="none" ' + L + '/><path d="M52 40 q4 4 8 0" fill="none" ' + L + '/>';
         brows = '<path d="M39 33 l9 1" fill="none" ' + L + '/><path d="M61 33 l-9 1" fill="none" ' + L + '/>';
         mouth = '<path d="M46 50 h8" fill="none" ' + L + '/>';
         extra = '<text class="zz" x="76" y="22" font-size="13" fill="var(--muted)" font-family="var(--font)">z</text><text class="zz" x="84" y="12" font-size="10" fill="var(--muted)" font-family="var(--font)" style="animation-delay:.8s">z</text>';
         break;
       case 'pout':
-        arms = '<path d="M34 70 Q50 84 66 72" fill="none" ' + L + '/><path d="M66 70 Q50 90 34 76" fill="none" ' + L + '/>';
-        eyes = '<circle cx="42" cy="40" r="2.6" fill="var(--line)"/><circle cx="54" cy="40" r="2.6" fill="var(--line)"/>';
+        eyes ='<circle cx="42" cy="40" r="2.6" fill="var(--line)"/><circle cx="54" cy="40" r="2.6" fill="var(--line)"/>';
         brows = '<path d="M39 34 l9 -2" fill="none" ' + L + '/><path d="M61 32 l-9 2" fill="none" ' + L + '/>';
         mouth = '<path d="M45 51 q5 -4 10 0" fill="none" ' + L + '/>';
         cheeks = '<circle cx="37" cy="47" r="3.5" fill="#E8858C" opacity=".5"/><circle cx="63" cy="47" r="3.5" fill="#E8858C" opacity=".5"/>';
         break;
       case 'proud':
-        arms = '<path d="M34 70 L24 92" fill="none" ' + L + '/><path d="M66 68 L78 46" fill="none" ' + L + '/>';
-        eyes = '<circle cx="44" cy="40" r="2.8" fill="var(--line)"/><circle cx="56" cy="40" r="2.8" fill="var(--line)"/><circle cx="45" cy="39" r=".9" fill="#fff"/><circle cx="57" cy="39" r=".9" fill="#fff"/>';
+        eyes ='<circle cx="44" cy="40" r="2.8" fill="var(--line)"/><circle cx="56" cy="40" r="2.8" fill="var(--line)"/><circle cx="45" cy="39" r=".9" fill="#fff"/><circle cx="57" cy="39" r=".9" fill="#fff"/>';
         brows = '<path d="M40 33 l8 -1" fill="none" ' + L + '/><path d="M60 32 l-8 0" fill="none" ' + L + '/>';
         mouth = '<path d="M44 48 q6 8 12 0" fill="none" ' + L + '/>';
         extra = '<path class="spark" d="M84 20 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" fill="var(--gold)"/><path class="spark s2" d="M12 30 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z" fill="var(--gold)"/>';
         break;
       case 'done':
-        arms = '<path d="M34 68 L22 46" fill="none" ' + L + '/><path d="M66 68 L78 46" fill="none" ' + L + '/>';
-        eyes = '<path d="M40 41 q4 -5 8 0" fill="none" ' + L + '/><path d="M52 41 q4 -5 8 0" fill="none" ' + L + '/>';
+        eyes ='<path d="M40 41 q4 -5 8 0" fill="none" ' + L + '/><path d="M52 41 q4 -5 8 0" fill="none" ' + L + '/>';
         brows = '<path d="M39 32 l9 -2" fill="none" ' + L + '/><path d="M61 30 l-9 2" fill="none" ' + L + '/>';
         mouth = '<ellipse cx="50" cy="50" rx="3.5" ry="4" fill="var(--line)"/>';
         extra = '<path d="M74 36 q3 5 0 8 q-3 -3 0 -8z" fill="#7FB6E8"/>';
         break;
       default:
-        arms = '<path d="M34 70 L30 96" fill="none" ' + L + '/><path d="M66 70 L70 96" fill="none" ' + L + '/>';
-        eyes = '<circle cx="44" cy="40" r="2.6" fill="var(--line)"/><circle cx="56" cy="40" r="2.6" fill="var(--line)"/>';
+        eyes ='<circle cx="44" cy="40" r="2.6" fill="var(--line)"/><circle cx="56" cy="40" r="2.6" fill="var(--line)"/>';
         brows = '<path d="M40 33 h8" fill="none" ' + L + '/><path d="M52 33 h8" fill="none" ' + L + '/>';
         mouth = '<path d="M45 49 q5 4 10 0" fill="none" ' + L + '/>';
     }
+    if (G) {   // 주접 face while showing off: starry eyes, raised brows, big grin, blush
+      eyes = '<circle cx="44" cy="40" r="3" fill="var(--line)"/><circle cx="56" cy="40" r="3" fill="var(--line)"/><circle cx="45.2" cy="38.8" r="1.1" fill="#fff"/><circle cx="57.2" cy="38.8" r="1.1" fill="#fff"/>';
+      brows = '<path d="M39 31 l9 -2" fill="none" ' + L + '/><path d="M61 29 l-9 2" fill="none" ' + L + '/>';
+      mouth = '<path d="M43 47 q7 9 14 0" fill="none" ' + L + '/>';
+      cheeks = '<circle cx="36" cy="47" r="4" fill="#E8858C" opacity=".55"/><circle cx="64" cy="47" r="4" fill="#E8858C" opacity=".55"/>';
+    }
     // wardrobe pieces
-    const paint = (svg, main, accent, hairC) => (svg || '').replace(/\{\{(\w+)\}\}/g, (m, k) => ({ main, accent, hair: hairC, skin, line: 'var(--line)', face: 'var(--face)', white: '#FFFFFF' })[k] || m);
+    const paint =(svg, main, accent, hairC) => (svg || '').replace(/\{\{(\w+)\}\}/g, (m, k) => ({ main, accent, hair: hairC, skin, line: 'var(--line)', face: 'var(--face)', white: '#FFFFFF' })[k] || m);
     const hairIt = findItem('hair', p, pl.hair) || {}, topIt = findItem('top', p, pl.top) || {}, botIt = findItem('bottom', p, pl.bottom) || {}, accIt = pl.acc !== 'none' ? (findItem('acc', p, pl.acc) || {}) : {};
     const dress = isDress(topIt);
     const hairBack = paint(hairIt.back, pl.hairColor, pl.accent, pl.hairColor), hairFrontSvg = paint(hairIt.front, pl.hairColor, pl.accent, pl.hairColor);
@@ -605,11 +695,13 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const accBack = paint(accIt.back, pl.accColor, pl.accent, pl.hairColor), accFront = paint(accIt.front, pl.accColor, pl.accent, pl.hairColor);
     const shoes = '<ellipse cx="41" cy="121" rx="8" ry="4" fill="var(--line)"/><ellipse cx="59" cy="121" rx="8" ry="4" fill="var(--line)"/>';
     const moodKo = { sleepy: '졸린 표정', pout: '삐진 표정', calm: '편안한 표정', proud: '뿌듯한 표정', done: '다 했다는 표정' }[mood];
-    return '<svg class="char ' + mood + '" viewBox="0 0 100 130" role="img" aria-label="' + esc(nm) + ' — ' + moodKo + '">' + extra +
-      '<g class="body">' + hairBack + topBack + accBack + botBack + botFront + shoes + arms + (topFront || '<rect x="30" y="62" width="40" height="40" rx="12" fill="' + pl.topColor + '" ' + L + '/>') +
-      '<circle cx="50" cy="40" r="22" fill="' + skin + '" ' + F + '/>' +
-      cheeks + (eyes + brows + mouth).split('var(--line)').join('var(--face)') + hairFrontSvg + accFront +
-      '</g></svg>';
+    const HO = 'style="transform-origin:50px 62px"';   // head pivots at the neck
+    const torsoAcc = accIt.id === 'necklace' || accIt.id === 'scarf';   // sits on the torso, must not tilt with the head
+    return '<svg class="char ' + mood + (G ? ' g-' + G.kind : '') + '" viewBox="0 0 100 130" role="img" aria-label="' + esc(nm) + ' — ' + moodKo + '"' + (G ? ' style="--ge:-' + (Date.now() - G.at) + 'ms"' : '') + '>' + extra +
+      '<g class="body"><g class="head-back" ' + HO + '>' + hairBack + topBack + '</g>' + accBack + botBack + botFront + shoes + (topFront || '<rect x="30" y="62" width="40" height="40" rx="12" fill="' + pl.topColor + '" ' + L + '/>') + (torsoAcc ? accFront : '') +
+      '<g class="head" ' + HO + '><circle cx="50" cy="40" r="22" fill="' + skin + '" ' + F + '/>' +
+      cheeks + (eyes + brows + mouth).split('var(--line)').join('var(--face)') + hairFrontSvg + (torsoAcc ? '' : accFront) + '</g>' +
+      arms + '</g>' + spark + '</svg>';
   }
   // outfit editor shared by onboarding (ctx 'o0'/'o1') and settings (ctx 'A'/'B')
   function outfitEditor(ctx, pl, p) {
@@ -849,7 +941,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (onb.step === 1) {
       const person = (i) => {
         const p = i === 0 ? 'A' : 'B'; const pl = d.players[i];
-        return '<div class="card has-stick" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head stick"><div style="width:96px;flex-shrink:0">' + charSVG(p, 'calm', pl) + '</div>' +
+        const svg = charSVG(p, 'calm', pl);
+        return '<div class="card has-stick" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head stick"><div style="width:96px;flex-shrink:0">' + svg + '</div>' + sayHTML(p) +
           '<div class="field grow"><label for="onb-name-' + i + '">' + (i === 0 ? '남편 (첫째)' : '아내 (둘째)') + ' 이름</label><input class="input" id="onb-name-' + i + '" data-onb-name="' + i + '" value="' + esc(pl.name) + '" placeholder="' + (i === 0 ? '예: 지우' : '예: 하람') + '" maxlength="6"></div></div>' +
           outfitEditor('o' + i, pl, p) + '</div>';
       };
@@ -1180,7 +1273,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const person = (k) => {
       const open = fitOpen === k && k === me;   // only my own outfit is editable on this phone
       // while the outfit editor is open the character row stays frozen at the top of the card (live preview of my look)
-      return '<div class="card' + (open ? ' has-stick' : '') + '" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head' + (open ? ' stick' : '') + '"><div style="width:' + (open ? 96 : 76) + 'px;flex-shrink:0">' + charSVG(k, 'calm') + '</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div>' + (k === me ? '<button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button>' : '<span class="muted" style="font-size:11px">코디는 ' + esc(p[k].name) + ' 폰에서만 바꿀 수 있어요</span>') + '</div></div>' + (open ? outfitEditor(k, p[k], k) : '') + '</div>';
+      const svg = charSVG(k, 'calm');
+      return '<div class="card' + (open ? ' has-stick' : '') + '" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head' + (open ? ' stick' : '') + '"><div style="width:' + (open ? 96 : 76) + 'px;flex-shrink:0">' + svg + '</div>' + sayHTML(k) + '<div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div>' + (k === me ? '<button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button>' : '<span class="muted" style="font-size:11px">코디는 ' + esc(p[k].name) + ' 폰에서만 바꿀 수 있어요</span>') + '</div></div>' + (open ? outfitEditor(k, p[k], k) : '') + '</div>';
     };
     const share = store.mode === 'fb'
       ? '<section class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap" style="justify-content:space-between"><div><div class="muted" style="font-size:12px">우리 방 코드</div><div class="code">' + esc(store.code) + '</div></div><button class="btn sm" data-copy-invite>초대 링크 복사</button></div><p class="rule">상대 폰에서 초대 링크를 열거나 방 코드를 입력하면 같은 기계를 봐요. 두 폰이 같은 추첨 결과를 보고, 한쪽이 "다 했어요"를 누르면 바로 반영돼요.</p><button class="btn ghost sm" data-leave-room style="align-self:flex-start;color:var(--muted)">이 폰에서 방 나가기</button></section>'
@@ -1228,8 +1322,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         // onboarding
         if (ds.onbNext) { readOnbInputs(); onb.step = Number(ds.onbNext); if (onb.step === 2 && !(onb.draft.players[0].name.trim() && onb.draft.players[1].name.trim())) { onb.step = 1; toast('두 사람 이름을 적어 주세요'); } render(); return; }
         // outfit
-        if (ds.fit) { const [ctx, field, value] = ds.fit.split(':'); await applyFit(ctx, (pl) => { pl[field] = value; }); return; }
-        if (ds.fitRandom) { await applyFit(ds.fitRandom, (pl, who) => { randomOutfit(pl, who); }); return; }
+        if (ds.fit) { const [ctx, field, value] = ds.fit.split(':'); await applyFit(ctx, (pl) => { pl[field] = value; }, GESTURE_OF[field]); return; }
+        if (ds.fitRandom) { await applyFit(ds.fitRandom, (pl, who) => { randomOutfit(pl, who); }, 'random'); return; }
         if (ds.fitToggle) { if (ds.fitToggle !== me) { toast('상대 코디는 상대 폰에서만 바꿀 수 있어요'); return; } fitOpen = fitOpen === ds.fitToggle ? null : ds.fitToggle; const names = readSettingsInputs(); if (Object.keys(names).length) { await withState((s) => { applyNames(s, names); }); if (store.mode !== 'fb') afterStateChange(); } render(); return; }
         if (ds.onbAdd !== undefined) { readOnbInputs(); if (onb.draft.chores.length >= 12) { toast('캡슐은 12개까지만'); return; } onb.draft.chores.push({ name: '', icon: 'broom', period: 3, difficulty: 3, startIn: 0 }); render(); setTimeout(() => { const ins = document.querySelectorAll('[data-onb-chore-name]'); ins[ins.length - 1] && ins[ins.length - 1].focus(); }, 0); return; }
         if (ds.onbRemove) { readOnbInputs(); onb.draft.chores.splice(Number(ds.onbRemove), 1); render(); return; }
@@ -1285,11 +1379,14 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       } catch (err) { console.error(err); toast('저장이 잠깐 안 됐어요'); }
     };
   }
-  async function applyFit(ctx, edit) {
-    if (ctx[0] === 'o') { readOnbInputs(); const i = Number(ctx[1]); const who = i === 0 ? 'A' : 'B'; onb.draft.players[i] = normalizePlayer(who, onb.draft.players[i]); edit(onb.draft.players[i], who); render(); return; }
+  async function applyFit(ctx, edit, kind) {
+    const react = (who) => { if (kind) gesture = { id: uid(), p: who, kind, at: null, n: Math.floor(Math.random() * 3) }; };   // stamped on the first render that draws it
+    if (ctx[0] === 'o') { readOnbInputs(); const i = Number(ctx[1]); const who = i === 0 ? 'A' : 'B'; onb.draft.players[i] = normalizePlayer(who, onb.draft.players[i]); edit(onb.draft.players[i], who); react(who); render(); return; }
     if (ctx !== me) { toast('상대 코디는 상대 폰에서만 바꿀 수 있어요'); return; }
     const names = readSettingsInputs();
-    await withState((s) => { applyNames(s, names); s.players[ctx] = normalizePlayer(ctx, s.players[ctx]); edit(s.players[ctx], ctx); });
+    try { await withState((s) => { applyNames(s, names); s.players[ctx] = normalizePlayer(ctx, s.players[ctx]); edit(s.players[ctx], ctx); }); }
+    catch (e) { gesture = null; throw e; }
+    react(ctx);   // armed only once the write succeeded; the render that follows (mutate's queued render / afterStateChange) picks it up
     if (store.mode !== 'fb') afterStateChange();
   }
   function readOnbInputs() {
@@ -1341,7 +1438,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     runDraws();
   }
   function hearts() { const hero = $('#hero'); if (!hero) return; for (let i = 0; i < 5; i++) { const h = document.createElement('span'); h.className = 'heart'; h.textContent = '♥'; h.style.color = 'var(--red)'; h.style.left = (30 + Math.random() * 40) + '%'; h.style.top = '40%'; h.style.animationDelay = (i * 0.12) + 's'; hero.appendChild(h); setTimeout(() => h.remove(), 1800); } }
-  function go(r) { route = r; if (route !== 'wallet') walletDraft = null; addingChore = false; editingChore = null; resetArmed = false; switchArmed = false; fitOpen = null; giftOpen = false; quickOpen = false; if (route === 'calendar') { const today = dateStr(new Date()); calMonth = today.slice(0, 7); calDay = today; } render(); window.scrollTo({ top: 0, behavior: 'smooth' }); if (reveal && !reveal.current) stepReveal(); }
+  function go(r) { route = r; if (route !== 'wallet') walletDraft = null; addingChore = false; editingChore = null; resetArmed = false; switchArmed = false; fitOpen = null; gesture = null; giftOpen = false; quickOpen = false; if (route === 'calendar') { const today = dateStr(new Date()); calMonth = today.slice(0, 7); calDay = today; } render(); window.scrollTo({ top: 0, behavior: 'smooth' }); if (reveal && !reveal.current) stepReveal(); }
   async function quickDraw() {
     if (busy) return;
     const name = ($('#qa-name').value || '').trim(); if (!name) { toast('무슨 일인지 적어 주세요'); $('#qa-name').focus(); return; }
