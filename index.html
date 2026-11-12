@@ -136,6 +136,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .char.calm .body { animation: breathe 3s ease-in-out infinite; }
 /* outfit-change gestures: arms swing in from --from (resting) to the posed shape, hold, swing back; --ge resumes mid-way after a re-render */
 .char .arm, .char .head, .char .head-back, .char .body { transform-box: view-box; }
+.char .head, .char .head-back { transform-origin: 50px 62px; }   /* head pivots at the neck */
+.char .arm-l, .char .arm-rest-l { transform-origin: 34px 70px; } .char .arm-r, .char .arm-rest-r { transform-origin: 66px 70px; }
 .char.g-hair, .char.g-acc { --from: 170deg; }
 .char.g-skin { --from: 160deg; }
 .char.g-top { --from: 70deg; }
@@ -639,7 +641,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       if (Date.now() - gesture.at < 1250) G = gesture;
     }
     const base = POSE[mood] || POSE.calm; const gp = G ? GPOSE[G.kind] : {};
-    const armSVG = (side, pts, cls) => { const sh = side === 'l' ? [34, 70] : [66, 70]; const [el, hd] = pts; return '<g class="' + cls + '" style="transform-origin:' + sh[0] + 'px ' + sh[1] + 'px"><path d="M' + sh + ' L' + el + ' L' + hd + '" fill="none" stroke="var(--line)" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M' + el + ' L' + hd + '" fill="none" stroke="' + skin + '" stroke-width="5.5" stroke-linecap="round"/><path d="M' + sh + ' L' + el + '" fill="none" stroke="' + pl.topColor + '" stroke-width="5.5" stroke-linecap="round"/><circle cx="' + hd[0] + '" cy="' + hd[1] + '" r="4" fill="' + skin + '" stroke="var(--line)" stroke-width="2"/></g>'; };
+    const armSVG = (side, pts, cls) => { const sh = side === 'l' ? [34, 70] : [66, 70]; const [el, hd] = pts; return '<g class="' + cls + '"><path d="M' + sh + ' L' + el + ' L' + hd + '" fill="none" stroke="var(--line)" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M' + el + ' L' + hd + '" fill="none" stroke="' + skin + '" stroke-width="5.5" stroke-linecap="round"/><path d="M' + sh + ' L' + el + '" fill="none" stroke="' + pl.topColor + '" stroke-width="5.5" stroke-linecap="round"/><circle cx="' + hd[0] + '" cy="' + hd[1] + '" r="4" fill="' + skin + '" stroke="var(--line)" stroke-width="2"/></g>'; };
     // a posed side gets the resting arm underneath too; the two cross-fade so the gesture starts and ends on the normal drawing
     const armOf = (side) => gp[side] ? armSVG(side, base[side], 'arm-rest arm-rest-' + side) + armSVG(side, gp[side], 'arm arm-' + side) : armSVG(side, base[side], 'arm arm-' + side);
     const arms = armOf('l') + armOf('r');
@@ -695,11 +697,11 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const accBack = paint(accIt.back, pl.accColor, pl.accent, pl.hairColor), accFront = paint(accIt.front, pl.accColor, pl.accent, pl.hairColor);
     const shoes = '<ellipse cx="41" cy="121" rx="8" ry="4" fill="var(--line)"/><ellipse cx="59" cy="121" rx="8" ry="4" fill="var(--line)"/>';
     const moodKo = { sleepy: '졸린 표정', pout: '삐진 표정', calm: '편안한 표정', proud: '뿌듯한 표정', done: '다 했다는 표정' }[mood];
-    const HO = 'style="transform-origin:50px 62px"';   // head pivots at the neck
     const torsoAcc = accIt.id === 'necklace' || accIt.id === 'scarf';   // sits on the torso, must not tilt with the head
+    const headBack = (hairBack + topBack) ? '<g class="head-back">' + hairBack + topBack + '</g>' : '';   // no empty groups (some phones rasterised them as garbage)
     return '<svg class="char ' + mood + (G ? ' g-' + G.kind : '') + '" viewBox="0 0 100 130" role="img" aria-label="' + esc(nm) + ' — ' + moodKo + '"' + (G ? ' style="--ge:-' + (Date.now() - G.at) + 'ms"' : '') + '>' + extra +
-      '<g class="body"><g class="head-back" ' + HO + '>' + hairBack + topBack + '</g>' + accBack + botBack + botFront + shoes + (topFront || '<rect x="30" y="62" width="40" height="40" rx="12" fill="' + pl.topColor + '" ' + L + '/>') + (torsoAcc ? accFront : '') +
-      '<g class="head" ' + HO + '><circle cx="50" cy="40" r="22" fill="' + skin + '" ' + F + '/>' +
+      '<g class="body">' + headBack + accBack + botBack + botFront + shoes + (topFront || '<rect x="30" y="62" width="40" height="40" rx="12" fill="' + pl.topColor + '" ' + L + '/>') + (torsoAcc ? accFront : '') +
+      '<g class="head"><circle cx="50" cy="40" r="22" fill="' + skin + '" ' + F + '/>' +
       cheeks + (eyes + brows + mouth).split('var(--line)').join('var(--face)') + hairFrontSvg + (torsoAcc ? '' : accFront) + '</g>' +
       arms + '</g>' + spark + '</svg>';
   }
