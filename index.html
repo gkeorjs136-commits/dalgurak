@@ -1178,9 +1178,9 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function viewSettings() {
     const p = state.players;
     const person = (k) => {
-      const open = fitOpen === k;
+      const open = fitOpen === k && k === me;   // only my own outfit is editable on this phone
       // while the outfit editor is open the character row stays frozen at the top of the card (live preview of my look)
-      return '<div class="card' + (open ? ' has-stick' : '') + '" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head' + (open ? ' stick' : '') + '"><div style="width:' + (open ? 96 : 76) + 'px;flex-shrink:0">' + charSVG(k, 'calm') + '</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div><button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button></div></div>' + (open ? outfitEditor(k, p[k], k) : '') + '</div>';
+      return '<div class="card' + (open ? ' has-stick' : '') + '" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head' + (open ? ' stick' : '') + '"><div style="width:' + (open ? 96 : 76) + 'px;flex-shrink:0">' + charSVG(k, 'calm') + '</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div>' + (k === me ? '<button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button>' : '<span class="muted" style="font-size:11px">코디는 ' + esc(p[k].name) + ' 폰에서만 바꿀 수 있어요</span>') + '</div></div>' + (open ? outfitEditor(k, p[k], k) : '') + '</div>';
     };
     const share = store.mode === 'fb'
       ? '<section class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap" style="justify-content:space-between"><div><div class="muted" style="font-size:12px">우리 방 코드</div><div class="code">' + esc(store.code) + '</div></div><button class="btn sm" data-copy-invite>초대 링크 복사</button></div><p class="rule">상대 폰에서 초대 링크를 열거나 방 코드를 입력하면 같은 기계를 봐요. 두 폰이 같은 추첨 결과를 보고, 한쪽이 "다 했어요"를 누르면 바로 반영돼요.</p><button class="btn ghost sm" data-leave-room style="align-self:flex-start;color:var(--muted)">이 폰에서 방 나가기</button></section>'
@@ -1230,7 +1230,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         // outfit
         if (ds.fit) { const [ctx, field, value] = ds.fit.split(':'); await applyFit(ctx, (pl) => { pl[field] = value; }); return; }
         if (ds.fitRandom) { await applyFit(ds.fitRandom, (pl, who) => { randomOutfit(pl, who); }); return; }
-        if (ds.fitToggle) { fitOpen = fitOpen === ds.fitToggle ? null : ds.fitToggle; const names = readSettingsInputs(); if (Object.keys(names).length) { await withState((s) => { applyNames(s, names); }); if (store.mode !== 'fb') afterStateChange(); } render(); return; }
+        if (ds.fitToggle) { if (ds.fitToggle !== me) { toast('상대 코디는 상대 폰에서만 바꿀 수 있어요'); return; } fitOpen = fitOpen === ds.fitToggle ? null : ds.fitToggle; const names = readSettingsInputs(); if (Object.keys(names).length) { await withState((s) => { applyNames(s, names); }); if (store.mode !== 'fb') afterStateChange(); } render(); return; }
         if (ds.onbAdd !== undefined) { readOnbInputs(); if (onb.draft.chores.length >= 12) { toast('캡슐은 12개까지만'); return; } onb.draft.chores.push({ name: '', icon: 'broom', period: 3, difficulty: 3, startIn: 0 }); render(); setTimeout(() => { const ins = document.querySelectorAll('[data-onb-chore-name]'); ins[ins.length - 1] && ins[ins.length - 1].focus(); }, 0); return; }
         if (ds.onbRemove) { readOnbInputs(); onb.draft.chores.splice(Number(ds.onbRemove), 1); render(); return; }
         if (ds.onbPeriod) { const [i, dlt] = ds.onbPeriod.split(':'); readOnbInputs(); const c = onb.draft.chores[Number(i)]; c.period = clamp(c.period + Number(dlt), 1, 30); render(); return; }
@@ -1287,6 +1287,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   }
   async function applyFit(ctx, edit) {
     if (ctx[0] === 'o') { readOnbInputs(); const i = Number(ctx[1]); const who = i === 0 ? 'A' : 'B'; onb.draft.players[i] = normalizePlayer(who, onb.draft.players[i]); edit(onb.draft.players[i], who); render(); return; }
+    if (ctx !== me) { toast('상대 코디는 상대 폰에서만 바꿀 수 있어요'); return; }
     const names = readSettingsInputs();
     await withState((s) => { applyNames(s, names); s.players[ctx] = normalizePlayer(ctx, s.players[ctx]); edit(s.players[ctx], ctx); });
     if (store.mode !== 'fb') afterStateChange();
