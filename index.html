@@ -506,7 +506,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const tk = tokensOf(s); s.tokens = { A: Number.isFinite(tk.A) ? tk.A : START_TOKENS, B: Number.isFinite(tk.B) ? tk.B : START_TOKENS };
     s.overdueV = 1; return true;
   }
-  const postponeCost = (difficulty) => clamp(Number(difficulty) || 3, 1, 5) * 20;
+  const postponeCost = (difficulty) => clamp(Number(difficulty) || 3, 1, 5) * 50;
+  const FINE_PER_DAY = 10;            // each overdue capsule costs its owner this many tokens per missed day
   // rooms made before the formula change (rewards ×10, start 1000) are scaled down once
   function migrateTokensOf(s) {
     if (!s || s.tokenScale === TOKEN_SCALE) return false;
@@ -569,11 +570,33 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         // an undone capsule of this chore is still lying there: this cycle piles onto it instead of dropping a second one
         const pend = pendingDrawOf(s, c.id, d);
         if (pend) { pend.carried = (pend.carried || []).concat([d]); carried.add(k); carriedNew++; continue; }
-        s.draws[k] = makeDraw(s, c, d, tk, added.length);
+        const nd = makeDraw(s, c, d, tk, added.length);
+        const l0 = Math.max(0, daysBetween(d, lastDate));   // a draw created retroactively is not fined for days before it existed
+        if (l0 > 0) nd.fineDays = l0;
+        s.draws[k] = nd;
         added.push(k);
       }
     }
-    let changed = added.length > 0 || carriedNew > 0 || !!migrated;
+    // fine: an overdue capsule (not done before the day it was due ended) costs its owner 10 tokens per missed day.
+    // r.fineDays remembers how many days were already charged, so reopening the app never double-charges.
+    let fined = 0; let fineMigrated = false;
+    if (s.fineV !== 1) {   // rooms from before the fine rule: days already missed are forgiven, counting starts now
+      for (const k of Object.keys(s.draws)) { const r = s.draws[k]; if (r && !r.done) { const late = Math.max(0, daysBetween(r.date, lastDate)); if (late > 0) r.fineDays = late; } }
+      s.fineV = 1; fineMigrated = true;
+    }
+    for (const k of Object.keys(s.draws)) {
+      const r = s.draws[k]; if (!r || r.done) continue;
+      const late = Math.max(0, daysBetween(r.date, lastDate));   // "다음 뽑기 전까지": a day counts as missed only once its draw time has passed
+      const paid = (Number(r.fineDays) > 0) ? Number(r.fineDays) : 0;
+      if (late > paid) {
+        const amt = (late - paid) * FINE_PER_DAY;
+        const t = tokensOf(s); t[r.who] -= amt; s.tokens = t;
+        r.fineDays = late; r.fine = ((Number(r.fine) > 0) ? Number(r.fine) : 0) + amt;
+        pushLedger(s, { type: 'fine', from: r.who, amount: amt, note: r.choreName + (late > 1 ? ' ' + late + '일 밀림' : ' 1일 밀림') });
+        fined += amt;
+      }
+    }
+    let changed = added.length > 0 || carriedNew > 0 || !!migrated || fined > 0 || fineMigrated;
     if (s.lastProcessed !== lastDate && lastDate >= (s.lastProcessed || '')) { s.lastProcessed = lastDate; changed = true; }
     return { added, changed };
   }
@@ -1032,15 +1055,15 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       talkSec = '<section><div class="sec-head"><h2>난이도 협의 <span class="pill gold num">' + props.length + '</span></h2><span class="sub">둘이 동의해야 바뀌어요</span></div>' + allBtn + forMe.map(item).join('') + waiting.map(item).join('') + '</section>';
     }
     const quickSec = '<section>' + (quickOpen ? quickForm() : '<button class="btn" data-quick-open style="border-style:dashed;box-shadow:none;min-height:50px;justify-content:space-between;text-align:left"><span>+ 급한 캡슐 넣기</span><span class="muted" style="font-weight:400;font-size:12px">지금 생긴 일을 바로 뽑아요</span></button>') + '</section>';
-    const pendingSec = pending.length ? '<section><div class="sec-head"><h2>밀린 캡슐 <span class="pill red num">' + pending.length + '</span></h2><span class="sub">하기 전엔 그 일은 다시 안 떨어져요</span></div>' + pending.map(capsuleCard).join('') + '</section>' : '';
+    const pendingSec = pending.length ? '<section><div class="sec-head"><h2>밀린 캡슐 <span class="pill red num">' + pending.length + '</span></h2><span class="sub">하루 ' + FINE_PER_DAY + '토큰씩 벌금 · 끝내기 전엔 다시 안 돌아요</span></div>' + pending.map(capsuleCard).join('') + '</section>' : '';
     const trackSec = '<section><div class="sec-head"><h2>다음에 떨어질 캡슐</h2><span class="sub">말판 트랙 · 가까운 순서</span></div>' + trackHTML(today, ready) + '</section>';
     const lead = s.A === s.B ? null : (s.A > s.B ? 'A' : 'B'); const diff = Math.abs(s.A - s.B); const max = Math.max(100, s.A, s.B);
     const pp = Math.min(20, Math.round(diff / TOKENS_PER_PP) * 2);
-    const giftForm = giftOpen ? '<div class="row nowrap" style="margin-top:10px;gap:8px"><input class="input num" type="number" inputmode="numeric" id="gift-amt" min="1" max="' + s[me] + '" step="5" value="10" style="width:110px" aria-label="보낼 토큰"><button class="btn mint sm" data-gift-send>' + esc(playerName(other(me))) + '에게 보내기</button><button class="btn ghost sm" data-gift-open>취소</button></div>' : '';
+    const giftForm = giftOpen ? '<div class="row nowrap" style="margin-top:10px;gap:8px"><input class="input num" type="number" inputmode="numeric" id="gift-amt" min="1" max="' + Math.max(1, s[me]) + '" step="5" value="10" style="width:110px" aria-label="보낼 토큰"><button class="btn mint sm" data-gift-send>' + esc(playerName(other(me))) + '에게 보내기</button><button class="btn ghost sm" data-gift-open>취소</button></div>' : '';
     const scoreSec = '<section class="card">' +
       '<div class="sec-head"><h2>토큰 잔액</h2><span class="sub">많이 벌수록 싫은 일을 많이 한 거예요</span></div>' +
-      '<div class="score-row" style="margin-top:8px"><span class="lbl">' + esc(playerName('A')) + '</span><div class="tube"><div style="width:' + (s.A / max * 100) + '%;background:var(--a)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.A + '</span></div>' +
-      '<div class="score-row" style="margin-top:6px"><span class="lbl">' + esc(playerName('B')) + '</span><div class="tube"><div style="width:' + (s.B / max * 100) + '%;background:var(--b)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.B + '</span></div>' +
+      '<div class="score-row" style="margin-top:8px"><span class="lbl">' + esc(playerName('A')) + '</span><div class="tube"><div style="width:' + (Math.max(0, s.A) / max * 100) + '%;background:var(--a)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.A + '</span></div>' +
+      '<div class="score-row" style="margin-top:6px"><span class="lbl">' + esc(playerName('B')) + '</span><div class="tube"><div style="width:' + (Math.max(0, s.B) / max * 100) + '%;background:var(--b)"></div></div><span class="num" style="min-width:44px;text-align:right">' + s.B + '</span></div>' +
       '<div style="font-size:15px;font-weight:700;margin-top:8px">' + (lead ? josa(esc(playerName(lead)), '이', '가') + ' 토큰 ' + diff + '개 앞서요' : '지금 딱 똑같아요') + '</div>' +
       '<div class="muted" style="font-size:12px">' + (lead && pp > 0 ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + pp + '%p 올라가요' : '토큰 10개 차이마다 뒤처진 쪽이 2%p 더 잘 걸려요') + '</div>' +
       '<div class="row nowrap" style="margin-top:10px;justify-content:space-between"><span class="muted" style="font-size:11px">고마우면 토큰으로 양보할 수 있어요</span>' + (giftOpen ? '' : '<button class="btn sm" data-gift-open>토큰 보내기</button>') + '</div>' + giftForm + '</section>';
@@ -1064,14 +1087,15 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (r.done) action = '<span class="pill mint">완료</span>';
     else if (mine) action = '<div style="display:flex;flex-direction:column;gap:6px;align-items:stretch"><button class="btn mint sm" data-done="' + esc(k) + '">다 했어요</button><button class="btn sm" data-postpone="' + esc(k) + '" ' + (tk[me] < cost ? 'disabled' : '') + ' title="토큰 ' + cost + '개 내고 ' + esc(playerName(other(me))) + '에게 넘기기">미루기 −' + cost + '</button></div>';
     else action = '<button class="btn sm" data-cheer="' + esc(k) + '">응원 꾹' + (r.cheers ? ' <span class="num">' + r.cheers + '</span>' : '') + '</button>';
-    const late = !r.done && r.date < today ? daysBetween(r.date, today) : 0;
+    const bound = timeStr(new Date()) >= ((state && state.drawTime) || '08:00') ? today : addDays(today, -1);   // same boundary the fine uses
+    const late = !r.done && r.date < bound ? daysBetween(r.date, bound) : 0;
     const dateTag = late ? '<span class="pill red num">' + late + '일 밀림</span>' : (r.date !== today ? '<span class="pill muted">' + fmtDate(r.date) + '</span>' : '');
     const onceTag = r.once ? '<span class="pill muted">급한 1회</span>' : '';
     const handed = r.postponedBy ? '<span class="pill muted">' + josa(esc(playerName(r.postponedBy)), '이', '가') + ' 미룸</span>' : '';
     const carriedN = (r.carried || []).length;
     return '<article class="card capsule-card' + (r.done ? ' done' : '') + '">' + capSvg + '<div class="info"><div class="title"><span>' + esc(r.choreName) + ' → <span class="who-' + whoCls + '">' + esc(playerName(r.who)) + '</span></span><span class="pill gold num">' + (r.done ? '+' + reward + ' 토큰 받음' : '완수 +' + reward) + '</span>' + onceTag + handed + dateTag + '</div>' +
       '<div class="pbar" aria-label="' + esc(playerName('A')) + ' ' + pct(r.pA) + '%, ' + esc(playerName('B')) + ' ' + (100 - pct(r.pA)) + '%">' + pbarInner(r.pA, r.base) + '</div>' +
-      '<div class="reason">' + esc(r.reason) + ' · 난이도 ' + dif + (r.cheers ? ' · 응원 ' + r.cheers + '번' : '') + (carriedN ? ' · 밀린 사이 ' + carriedN + '번 더 돌아옴' : '') + '</div></div>' + action + '</article>';
+      '<div class="reason">' + esc(r.reason) + ' · 난이도 ' + dif + (r.cheers ? ' · 응원 ' + r.cheers + '번' : '') + (carriedN ? ' · 밀린 사이 ' + carriedN + '번 더 돌아옴' : '') + (!r.done && r.fine ? ' · <b style="color:var(--red)">벌금 −' + r.fine + '</b> (하루 ' + FINE_PER_DAY + '씩)' : '') + '</div></div>' + action + '</article>';
   }
   function pbarInner(pA, base) {
     if (base == null || Math.abs(pA - base) < 0.005) return '<div class="pa" style="width:' + (pA * 100) + '%"></div><div class="pb" style="width:' + ((1 - pA) * 100) + '%"></div>';
@@ -1163,7 +1187,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     return '<section><div class="sec-head"><h2>말판 위 캡슐 ' + regular.length + '개</h2><span class="sub">캡슐 하나 = 집안일 하나</span></div>' + (list || '<div class="card soft empty">아직 캡슐이 없어요</div>') +
       (addingChore ? choreForm(null) : '<button class="btn red" data-add-chore>+ 캡슐 추가</button>') + '</section>' +
       (onceList ? '<section><div class="sec-head"><h2>급한 캡슐</h2><span class="sub">오늘 화면에서 넣은 한 번짜리</span></div>' + onceList + '</section>' : '') +
-      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도, 미루기 = 난이도 × 20 토큰이에요. ' + (store.mode === 'fb' ? '난이도는 <b>두 사람이 동의해야</b> 바뀌어요(오늘 화면에서 답해요).' : '두 폰을 연결하면 난이도는 <b>두 사람이 동의해야</b> 바뀌어요. 지금(이 폰에만 저장되는 모드)은 바로 바뀌어요.') + '<br>뽑힌 캡슐을 안 하고 두면 <b>며칠 밀렸는지</b> 표시되고, 그 일은 끝낼 때까지 다시 떨어지지 않아요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
+      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도, 미루기 = 난이도 × 50 토큰이에요. ' + (store.mode === 'fb' ? '난이도는 <b>두 사람이 동의해야</b> 바뀌어요(오늘 화면에서 답해요).' : '두 폰을 연결하면 난이도는 <b>두 사람이 동의해야</b> 바뀌어요. 지금(이 폰에만 저장되는 모드)은 바로 바뀌어요.') + '<br>뽑힌 캡슐을 안 하고 두면 <b>며칠 밀렸는지</b> 표시되고 하루 ' + FINE_PER_DAY + '토큰씩 벌금이 깎여요. 그 일은 끝낼 때까지 다시 떨어지지 않아요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
   }
   function choreForm(c) {
     const isNew = !c; const today = dateStr(new Date()); const d = c || { name: '', icon: 'dish', period: 3, startDate: today, difficulty: 3 };
@@ -1252,7 +1276,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (calDay) {
       const e = byDay[calDay] || { done: [], pending: [], ledger: [] };
       const drawItem = (r, pending) => { const late = pending ? Math.max(0, daysBetween(r.date, today)) : daysBetween(r.date, doneDateOf(r)); return '<div class="hist-item"><span style="display:inline-flex">' + capsuleSVG(r.icon, DIFF_COLORS[choreDiff(r)], 26, { label: r.choreName, done: !!r.done }) + '</span><div class="t"><div><b>' + esc(r.choreName) + '</b> → <span class="who-' + r.who.toLowerCase() + '">' + esc(playerName(r.who)) + '</span> ' + (pending ? '<span class="pill red num">' + (late ? late + '일 밀림' : '아직') + '</span>' : '<span class="pill mint num">완료 +' + (r.reward || 0) + '</span>' + (late > 0 ? ' <span class="pill muted num">' + fmtDate(r.date) + ' 것 · ' + late + '일 늦게</span>' : '')) + (r.once ? ' <span class="pill muted">급한 1회</span>' : '') + (r.postponedBy ? ' <span class="pill muted">' + josa(esc(playerName(r.postponedBy)), '이', '가') + ' 미룸</span>' : '') + '</div><div class="r">난이도 ' + choreDiff(r) + ' · ' + esc(r.reason) + '</div></div></div>'; };
-      const ledgerItem = (l) => { const txt = l.type === 'gift' ? esc(playerName(l.from)) + ' → ' + esc(playerName(l.to)) + ' 토큰 ' + l.amount + '개 양보' : l.type === 'postpone' ? josa(esc(playerName(l.from)), '이', '가') + ' ' + esc(l.note || '') + ' 미루기: ' + esc(playerName(l.to)) + '에게 토큰 ' + l.amount + '개' : esc(l.note || ''); return '<div class="hist-item"><span style="display:inline-flex;color:var(--muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg></span><div class="t"><div>' + txt + '</div></div></div>'; };
+      const ledgerItem = (l) => { const txt = l.type === 'gift' ? esc(playerName(l.from)) + ' → ' + esc(playerName(l.to)) + ' 토큰 ' + l.amount + '개 양보' : l.type === 'postpone' ? josa(esc(playerName(l.from)), '이', '가') + ' ' + esc(l.note || '') + ' 미루기: ' + esc(playerName(l.to)) + '에게 토큰 ' + l.amount + '개' : l.type === 'fine' ? esc(playerName(l.from)) + ' 벌금 <b style="color:var(--red)">−' + l.amount + '</b> (' + esc(l.note || '') + ')' : esc(l.note || ''); return '<div class="hist-item"><span style="display:inline-flex;color:var(--muted)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/></svg></span><div class="t"><div>' + txt + '</div></div></div>'; };
       const ds = statsOf(e.done);
       const items = e.done.slice().sort((a, b) => (a.doneAt || 0) - (b.doneAt || 0)).map((r) => drawItem(r, false)).join('') + e.pending.map((r) => drawItem(r, true)).join('') + e.ledger.slice().sort((a, b) => a.ts - b.ts).map(ledgerItem).join('');
       daySec = '<section class="card"><div class="sec-head"><h2>' + fmtDate(calDay, true) + (calDay === today ? ' · 오늘' : '') + '</h2><span class="sub num">' + (e.done.length ? esc(playerName('A')) + ' ' + ds.A.n + ' · ' + esc(playerName('B')) + ' ' + ds.B.n : '') + '</span></div>' + (items || '<div class="empty" style="padding:10px">이날은 기록이 없어요</div>') + '</section>';
@@ -1295,10 +1319,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       '<b>1. 주기</b> — 캡슐은 자기 주기만큼 말판을 돌고, 돌아온 날 추첨 시각에 떨어져요.<br>' +
       '<b>2. 동전 지갑</b> — 각자 동전 5×(캡슐 수)개를 1~10개씩 나눠 넣어요. 서로의 지갑은 안 보여요.<br>' +
       '<b>3. 토큰</b> — 둘 다 ' + START_TOKENS + '개로 시작. 캡슐을 완수하면 (상대가 그 일을 싫어하는 정도 1~10) × 난이도(1~5) 토큰을 벌어요. 최대 50.<br>' +
-      '<b>4. 미루기·양보</b> — 뽑힌 캡슐을 난이도 × 20 토큰 내고 상대에게 넘길 수 있어요(토큰은 상대에게 가요). 고마우면 토큰을 보내서 양보할 수도 있어요.<br>' +
+      '<b>4. 미루기·양보</b> — 뽑힌 캡슐을 난이도 × 50 토큰 내고 상대에게 넘길 수 있어요(토큰은 상대에게 가요). 고마우면 토큰을 보내서 양보할 수도 있어요.<br>' +
       '<b>5. 확률</b> — 동전을 더 넣은 쪽이 더 잘 걸리고, 토큰이 뒤처진 쪽은 10개당 2%p(최대 20%p) 더 잘 걸려요. 15~85% 사이에서만 움직여요.<br>' +
       '<b>6. 표정</b> — 상대보다 토큰 25개 뒤면 삐지고, 60개 뒤면 졸아요. 25개 앞서면 뿌듯해해요.<br>' +
-      '<b>7. 밀린 캡슐</b> — 안 한 캡슐은 사라지지 않고 "며칠 밀림"이 붙어요. 그 일은 끝낼 때까지 다시 떨어지지 않아요(돌아온 횟수만 세요).<br>' +
+      '<b>7. 밀린 캡슐</b> — 다음 뽑기 전까지 안 하면 캡슐 하나마다 하루 ' + FINE_PER_DAY + '토큰씩 벌금이 깎여요. 캡슐은 사라지지 않고 "며칠 밀림"이 붙고, 그 일은 끝낼 때까지 다시 떨어지지 않아요(돌아온 횟수만 세요).<br>' +
       '<b>8. 급한 캡슐</b> — 갑자기 생긴 일은 오늘 화면에서 바로 넣고 뽑아요. 지갑과 상관없이 반반(+따라잡기), 완수 토큰은 6 × 난이도, 끝내면 말판에서 사라져요.<br>' +
       '<b>9. 달력</b> — 누가 언제 뭘 했는지, 주간·월간 합계를 달력 탭에서 봐요. 끝낸 날 기준이에요.<br>' +
       '<b>10. 난이도 협의</b> — ' + (store.mode === 'fb' ? '난이도는 두 사람이 동의해야 바뀌어요. 한쪽이 고치면 상대 오늘 화면에 "난이도 협의"로 떠서 동의·다르게·그대로를 고를 수 있어요. 새 캡슐(처음 넣은 캡슐 포함)은 올린 사람의 난이도로 시작하되 상대가 "좋아요"나 "다르게"로 확인해요. 급한 캡슐은 예외예요.' : '두 폰을 연결하면 난이도는 두 사람이 동의해야 바뀌어요(상대 오늘 화면에 "난이도 협의"로 떠요). 지금은 혼자 써보는 모드라 바로 바뀌어요.') + '</p></section>' +
@@ -1343,7 +1367,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         if (ds.qaIcon) { $('#qa-icon').value = ds.qaIcon; $('#qa-icon-touched').value = '1'; document.querySelectorAll('[data-qa-icon]').forEach((b) => { const on = b.dataset.qaIcon === ds.qaIcon; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); return; }
         if (ds.qaDiff) { $('#qa-diff').value = ds.qaDiff; document.querySelectorAll('[data-qa-diff]').forEach((b) => { const on = b.dataset.qaDiff === ds.qaDiff; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); }); return; }
         if (ds.quickDraw !== undefined) { await quickDraw(); return; }
-        if (ds.postpone) { const k = ds.postpone; let msg = ''; await withState((s) => { const r = s.draws && s.draws[k]; if (!r || r.done || r.who !== me) { msg = '지금은 미룰 수 없어요'; return; } const cost = postponeCost(choreDiff(r)); const tk = tokensOf(s); if (tk[me] < cost) { msg = '토큰이 모자라요 (' + cost + '개 필요)'; return; } tk[me] -= cost; tk[other(me)] += cost; s.tokens = tk; r.postponedBy = me; r.postponedAt = Date.now(); r.who = other(me); r.reason = r.reason + ' → ' + josa(nameOf(s, me), '이', '가') + ' 토큰 ' + cost + '개 내고 미룸'; pushLedger(s, { type: 'postpone', from: me, to: other(me), amount: cost, note: r.choreName }); msg = r.choreName + '를 ' + nameOf(s, other(me)) + '에게 넘겼어요 (토큰 −' + cost + ')'; }); if (store.mode !== 'fb') afterStateChange(); toast(msg); return; }
+        if (ds.postpone) { const k = ds.postpone; let msg = ''; await withState((s) => { const r = s.draws && s.draws[k]; if (!r || r.done || r.who !== me) { msg = '지금은 미룰 수 없어요'; return; } const cost = postponeCost(choreDiff(r)); const tk = tokensOf(s); if (tk[me] < cost) { msg = '토큰이 모자라요 (' + cost + '개 필요)'; return; } tk[me] -= cost; tk[other(me)] += cost; s.tokens = tk; r.postponedBy = me; r.postponedAt = Date.now(); r.who = other(me); r.fineDays = Math.max(Number(r.fineDays) || 0, daysBetween(r.date, dateStr(new Date())) + 1); /* the receiver gets a fresh day before fines resume */ r.reason = r.reason + ' → ' + josa(nameOf(s, me), '이', '가') + ' 토큰 ' + cost + '개 내고 미룸'; pushLedger(s, { type: 'postpone', from: me, to: other(me), amount: cost, note: r.choreName }); msg = r.choreName + '를 ' + nameOf(s, other(me)) + '에게 넘겼어요 (토큰 −' + cost + ')'; }); if (store.mode !== 'fb') afterStateChange(); toast(msg); return; }
         if (ds.giftOpen !== undefined) { giftOpen = !giftOpen; render(); if (giftOpen) setTimeout(() => { const i = $('#gift-amt'); i && i.focus(); }, 0); return; }
         if (ds.giftSend !== undefined) { const amt = Math.floor(Number(($('#gift-amt') || {}).value) || 0); if (amt < 1) { toast('보낼 개수를 적어 주세요'); return; } let msg = ''; await withState((s) => { const tk = tokensOf(s); if (tk[me] < amt) { msg = '토큰이 모자라요'; return; } tk[me] -= amt; tk[other(me)] += amt; s.tokens = tk; pushLedger(s, { type: 'gift', from: me, to: other(me), amount: amt }); msg = nameOf(s, other(me)) + '에게 토큰 ' + amt + '개를 보냈어요'; }); giftOpen = false; if (store.mode !== 'fb') afterStateChange(); toast(msg); hearts(); return; }
         if (ds.cheer) { const k = ds.cheer; await withState((s) => { const r = s.draws && s.draws[k]; if (r) r.cheers = (r.cheers || 0) + 1; }); if (store.mode !== 'fb') afterStateChange(); hearts(); return; }
@@ -1361,7 +1385,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         if (ds.onbDiff) { const [i, n] = ds.onbDiff.split(':'); readOnbInputs(); onb.draft.chores[Number(i)].difficulty = Number(n); render(); return; }
         if (ds.step) { const [id, dlt] = ds.step.split(':'); const inp = document.getElementById(id); const lo = id === 'cf-startin' ? 0 : 1; inp.value = clamp((Number(inp.value) || lo) + Number(dlt), lo, 365); return; }
         if (ds.saveChore !== undefined) { await saveChoreForm(); return; }
-        if (ds.deleteChore) { const id = ds.deleteChore; const wasOnce = chores().some((c) => c.id === id && c.once); await withState((s) => { s.chores = s.chores.filter((c) => c.id !== id); for (const p of ['A', 'B']) if (s.prefs && s.prefs[p]) delete s.prefs[p][id]; for (const k of Object.keys(s.draws || {})) if (s.draws[k].choreId === id && !s.draws[k].done) delete s.draws[k]; }); editingChore = null; walletDraft = null; if (store.mode !== 'fb') afterStateChange(); toast(wasOnce ? '급한 캡슐을 뺐어요 (끝낸 기록만 남아요)' : '캡슐을 뺐어요. 동전 지갑을 다시 채워 주세요'); return; }
+        if (ds.deleteChore) { const id = ds.deleteChore; const wasOnce = chores().some((c) => c.id === id && c.once); await withState((s) => { s.chores = s.chores.filter((c) => c.id !== id); for (const p of ['A', 'B']) if (s.prefs && s.prefs[p]) delete s.prefs[p][id]; for (const k of Object.keys(s.draws || {})) if (s.draws[k].choreId === id && !s.draws[k].done) { const r = s.draws[k]; if (Number(r.fine) > 0) pushLedger(s, { type: 'note', note: josa(nameOf(s, me), '이', '가') + ' ' + r.choreName + ' 캡슐을 뺌 · 그동안 벌금 ' + Number(r.fine) + ' 내고 끝' }); delete s.draws[k]; } }); editingChore = null; walletDraft = null; if (store.mode !== 'fb') afterStateChange(); toast(wasOnce ? '급한 캡슐을 뺐어요 (끝낸 기록만 남아요)' : '캡슐을 뺐어요. 동전 지갑을 다시 채워 주세요'); return; }
         // wallet
         if (ds.coin) { const [id, dlt] = ds.coin.split(':'); walletDraft[id] = clamp((walletDraft[id] || 5) + Number(dlt), 1, 10); render(); announceWallet(); return; }
         if (ds.walletEven !== undefined) { for (const c of regularChoresOf(state)) walletDraft[c.id] = 5; render(); announceWallet(); return; }
@@ -1410,7 +1434,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const cs = d.chores.filter((c) => c.name.trim()).map((c) => ({ id: uid(), name: c.name.trim(), icon: c.icon, period: clamp(c.period, 1, 365), difficulty: choreDiff(c), startDate: addDays(today, clamp(c.startIn || 0, 0, 365)), createdDate: today }));
     if (!cs.length) { toast('캡슐을 하나 이상 넣어 주세요'); return; }
     const pA = { ...d.players[0], name: d.players[0].name.trim() }, pB = { ...d.players[1], name: d.players[1].name.trim() };
-    const fresh = { v: 3, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, tokens: { A: START_TOKENS, B: START_TOKENS }, tokenScale: TOKEN_SCALE, ledger: [], lastProcessed: null, quiet: false, setupPending: store.mode === 'fb' };
+    const fresh = { v: 3, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, tokens: { A: START_TOKENS, B: START_TOKENS }, tokenScale: TOKEN_SCALE, ledger: [], lastProcessed: null, quiet: false, setupPending: store.mode === 'fb', fineV: 1, overdueV: 1 };
     await mutate((s) => (s ? { write: false } : { write: true, state: fresh }));
     if (store.mode !== 'fb') { me = null; afterStateChange(); runDraws(); }
   }
