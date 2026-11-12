@@ -253,6 +253,20 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .onb-steps span { flex: 1; height: 6px; border-radius: 999px; background: var(--track); }
 .onb-steps span.on { background: var(--red); }
 .hero-wrap { position: relative; }
+/* "frozen pane" strips: stick just under the topbar while their section scrolls */
+.stick { position: sticky; top: calc(52px + env(safe-area-inset-top, 0px)); z-index: 4; }
+.wallet-stick { background: var(--bg); padding-bottom: 8px; }
+.wallet-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+.wallet-bar .big { font-size: 28px; font-weight: 700; line-height: 1; }
+.wallet-bar .big.ok { color: var(--mint-ink); } .wallet-bar .big.over { color: var(--red); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .wallet-bar .big.ok { color: var(--mint); } }
+.wallet-bar .pill { white-space: normal; text-align: left; line-height: 1.25; }
+.card.has-stick { overflow: clip; }
+.fit-head { display: flex; gap: 12px; align-items: center; }
+.fit-head.stick { background: var(--paper); margin: -12px -14px 0; padding: 10px 14px; border-bottom: 1.5px dashed var(--track); }
+@supports not (overflow: clip) { .fit-head.stick { margin: 0; padding: 0 0 8px; } }
+@media (max-height: 560px) { .fit-head.stick { position: static; } }
+#chore-form { scroll-margin-top: calc(60px + env(safe-area-inset-top, 0px)); }
 .rule { font-size: 12px; line-height: 1.55; color: var(--muted); word-break: keep-all; }
 .rule b { color: var(--ink); }
 .code { font-size: 22px; font-weight: 700; letter-spacing: 3px; font-variant-numeric: tabular-nums; }
@@ -318,6 +332,11 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   const DIFF_COLORS = { 1: '#5FBFA8', 2: '#7FB6E8', 3: '#F2C94C', 4: '#F5A742', 5: '#D1453A' };
   const DIFF_NAMES = { 1: '아주 쉬움', 2: '쉬움', 3: '보통', 4: '힘듦', 5: '아주 힘듦' };
   const choreDiff = (c) => clamp(Number(c && c.difficulty) || 3, 1, 5);
+  // difficulty takes both people: in a shared room a change (or a new capsule's difficulty) waits in c.diffProposal until the partner agrees
+  function diffProposalOf(c) { const p = c && c.diffProposal; if (!p || !(p.value >= 1 && p.value <= 5) || (p.by !== 'A' && p.by !== 'B')) return null; return p; }
+  function diffProposals(s) { return choresOf(s).filter((c) => !c.once && diffProposalOf(c)); }
+  // an agreed difficulty also reaches capsules of that chore that have dropped but are not finished yet (reward/colour/postpone cost)
+  function setChoreDiff(s, c, v) { c.difficulty = clamp(Number(v) || 3, 1, 5); delete c.diffProposal; for (const k of Object.keys(s.draws || {})) { const r = s.draws[k]; if (r && r.choreId === c.id && !r.done) r.difficulty = c.difficulty; } }
   const ICON_KEYWORDS = [
     ['dish', /설거지|그릇|식기|접시|컵/], ['towel', /수건|빨래|세탁|타월|건조/], ['laundry', /세탁기|빨래 돌리|돌리기|이불 빨/], ['toilet', /화장실|변기|욕실|세면|샤워/],
     ['broom', /청소|바닥|걸레|먼지|빗자루|진공|돌돌이|정리/], ['trash', /쓰레기|분리수거|재활용|음쓰|음식물|버리/], ['pot', /요리|저녁|점심|아침|밥|국|반찬|식사|주방/],
@@ -647,13 +666,17 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   // Apply fn to the latest state atomically. fn(s) mutates s (s may be null) and returns {write, state, ...}.
   async function mutate(fn) {
     if (store.mode === 'fb') {
-      return store.db.runTransaction(async (tx) => {
-        const snap = await tx.get(store.ref);
+      const ref = store.ref;
+      const r = await store.db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
         const s = snap.exists ? clone(snap.data()) : null;
         const r = fn(s);
-        if (r && r.write) { r.state.updatedAt = Date.now(); tx.set(store.ref, r.state); }
+        if (r && r.write) { r.state.updatedAt = Date.now(); tx.set(ref, r.state); }
         return r;
       });
+      // show my own committed change right away instead of waiting for the live listener (which can stall on phones)
+      if (r && r.write && r.state && store.ref === ref) { state = clone(r.state); resolveRole(); setTimeout(render, 0); }
+      return r;
     }
     const r = fn(state);
     if (r && r.write) { r.state.updatedAt = Date.now(); state = r.state; lsSet(LOCAL_KEY, JSON.stringify(state)); }
@@ -698,14 +721,35 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (store.unsub) store.unsub();
     store.ref = store.db.collection('rooms').doc(code);
     loading = true; render();
-    store.unsub = store.ref.onSnapshot((snap) => {
-      state = snap.exists ? clone(snap.data()) : null;
-      if (reveal) { const d = (state && state.draws) || {}; reveal.queue = reveal.queue.filter((k) => d[k]); if (reveal.current && !d[reveal.current]) { reveal.current = null; if (!reveal.queue.length) reveal = null; } }
-      loading = false; store.error = null;
-      resolveRole(); render();
-      if (state) runDraws();
-    }, (err) => { store.error = err; loading = false; render(); });
+    subscribeRoom();
   }
+  function applySnap(snap) {
+    state = snap.exists ? clone(snap.data()) : null;
+    if (reveal) { const d = (state && state.draws) || {}; reveal.queue = reveal.queue.filter((k) => d[k]); if (reveal.current && !d[reveal.current]) { reveal.current = null; if (!reveal.queue.length) reveal = null; } }
+    loading = false; store.error = null;
+    resolveRole(); render();
+    if (state) runDraws();
+  }
+  function subscribeRoom() {
+    if (store.unsub) store.unsub();
+    const ref = store.ref;
+    store.unsub = ref.onSnapshot((snap) => { if (store.ref === ref) applySnap(snap); }, (err) => { if (store.ref !== ref) return; store.error = err; loading = false; render(); });
+  }
+  // the live listener can go quiet after the phone sleeps or switches networks: pull the latest from the server on demand
+  let resyncing = false;
+  function resync() {
+    if (store.mode !== 'fb' || !store.ref || resyncing) return;
+    const ref = store.ref; resyncing = true;
+    ref.get({ source: 'server' }).then((snap) => {
+      if (store.ref !== ref) return;
+      const stale = state && snap.exists && Number((snap.data() || {}).updatedAt || 0) < Number(state.updatedAt || 0);   // a fetch that raced my own newer write
+      if (!stale) applySnap(snap);
+    }).catch(() => { }).then(() => { resyncing = false; });
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && store.mode === 'fb' && store.ref) { subscribeRoom(); resync(); } });
+  window.addEventListener('online', resync);
+  window.addEventListener('pageshow', (e) => { if (e.persisted) resync(); });
+  setInterval(() => { if (document.visibilityState === 'visible') resync(); }, 60000);
   function leaveRoom() { if (store.unsub) store.unsub(); store.unsub = null; store.ref = null; store.code = null; lsSet(ROOM_KEY, null); state = null; me = null; reveal = null; roomScreen = 'pick'; route = 'today'; render(); }
   async function wipe() {
     if (store.mode === 'fb' && store.ref) { try { await store.ref.delete(); } catch (e) { } lsSet(roleKey(), null); state = null; me = null; onb = { step: 1, draft: null }; reveal = null; route = 'today'; render(); return; }
@@ -719,6 +763,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       try {
         firebase.initializeApp(FIREBASE_CONFIG);
         store.db = firebase.firestore(); store.mode = 'fb';
+        try { store.db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) { }
         const code = lsGet(ROOM_KEY);
         if (code) connectRoom(code); else { loading = false; roomScreen = 'pick'; render(); }
       } catch (e) { store.mode = 'local'; store.error = e; }
@@ -746,8 +791,19 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       case 'settings': body = viewSettings(); break;
       default: route = 'today'; body = viewToday();
     }
+    // a live update from the other phone must not wipe what I am typing in the capsule form
+    const oldForm = $('#chore-form');
+    const keep = oldForm ? { id: oldForm.dataset.choreId, diffInit: oldForm.dataset.diffInit, name: $('#cf-name').value, icon: $('#cf-icon').value, iconTouched: $('#cf-icon-touched').value, diff: $('#cf-diff').value, period: $('#cf-period').value, startin: $('#cf-startin').value } : null;
     app.innerHTML = topbar(true) + '<main>' + body + '</main>' + nav();
     bind();
+    const f = $('#chore-form');
+    if (keep && f && f.dataset.choreId === keep.id) {
+      if (f.dataset.diffInit !== keep.diffInit) toast('이 캡슐의 난이도 제안이 바뀌었어요. 다시 확인해 주세요');
+      f.dataset.diffInit = keep.diffInit;
+      $('#cf-name').value = keep.name; $('#cf-icon').value = keep.icon; $('#cf-icon-touched').value = keep.iconTouched; $('#cf-period').value = keep.period; $('#cf-startin').value = keep.startin; $('#cf-diff').value = keep.diff;
+      document.querySelectorAll('[data-form-diff]').forEach((b) => { const on = b.dataset.formDiff === keep.diff; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+      document.querySelectorAll('[data-form-icon]').forEach((b) => { const on = b.dataset.formIcon === keep.icon; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    }
   }
   function nextCapsule() {
     const today = dateStr(new Date()); const ready = timeStr(new Date()) >= (state.drawTime || '08:00');
@@ -793,7 +849,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     if (onb.step === 1) {
       const person = (i) => {
         const p = i === 0 ? 'A' : 'B'; const pl = d.players[i];
-        return '<div class="card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;gap:12px;align-items:center"><div style="width:96px;flex-shrink:0">' + charSVG(p, 'calm', pl) + '</div>' +
+        return '<div class="card has-stick" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head stick"><div style="width:96px;flex-shrink:0">' + charSVG(p, 'calm', pl) + '</div>' +
           '<div class="field grow"><label for="onb-name-' + i + '">' + (i === 0 ? '남편 (첫째)' : '아내 (둘째)') + ' 이름</label><input class="input" id="onb-name-' + i + '" data-onb-name="' + i + '" value="' + esc(pl.name) + '" placeholder="' + (i === 0 ? '예: 지우' : '예: 하람') + '" maxlength="6"></div></div>' +
           outfitEditor('o' + i, pl, p) + '</div>';
       };
@@ -854,6 +910,27 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const wsMe = walletStateOf(state, me), wsOther = walletStateOf(state, other(me));
     if (wsMe !== 'ok') notice = '<section><div class="notice warn">' + icon('dish', 16) + '<div>' + (wsMe === 'stale' ? '캡슐 수가 바뀌어서 <b>동전 지갑</b>을 다시 맞춰야 해요. 맞추기 전엔 모든 캡슐을 5개씩 균등으로 봐요.' : '<b>동전 지갑</b>이 아직 안 채워졌어요. 채우기 전엔 모든 캡슐을 5개씩 균등으로 보고 추첨해요.') + ' <a href="#" data-go="wallet" style="font-weight:700">지갑 ' + (wsMe === 'stale' ? '맞추기' : '채우기') + '</a></div></div></section>';
     else if (wsOther !== 'ok') notice = '<section><div class="notice">' + icon('dish', 16) + '<div>' + esc(playerName(other(me))) + '의 동전 지갑이 ' + (wsOther === 'stale' ? '아직 새 캡슐에 맞춰지지 않았어요' : '아직 비어 있어요') + '. 맞출 때까지는 그쪽 선호도를 5개씩 균등으로 봐요.</div></div></section>';
+    // difficulty proposals: the partner's ones come first (they need my answer), then mine (waiting)
+    const props = diffProposals(state); let talkSec = '';
+    if (props.length) {
+      const item = (c) => {
+        const p = diffProposalOf(c); const cur = choreDiff(c); const v = clamp(Number(p.value), 1, 5); const mine = p.by === me; const isNew = !!p.isNew;
+        const nm = '<b>' + esc(c.name) + '</b>'; const lv = '<b>' + v + ' (' + DIFF_NAMES[v] + ')</b>';
+        const an = esc(c.name);   // every DIFF_NAMES value ends in a consonant, so "(…)" always takes 으로
+        const text = mine
+          ? (isNew ? '내가 올린 ' + nm + ' 캡슐의 난이도 ' + lv + ' · ' + esc(playerName(other(me))) + '의 확인을 기다려요' : '내가 제안한 ' + nm + ' 난이도 <b>' + cur + ' → ' + v + '</b> · ' + esc(playerName(other(me))) + '의 동의를 기다려요')
+          : (isNew ? josa(esc(playerName(p.by)), '이', '가') + ' 새 캡슐 ' + nm + '의 난이도를 ' + lv + '으로 정했어요. 괜찮아요?' : josa(esc(playerName(p.by)), '이', '가') + ' ' + nm + ' 난이도를 <b>' + cur + ' → ' + v + ' (' + DIFF_NAMES[v] + ')</b>으로 바꾸자고 해요');
+        // a new capsule's confirmation request can only be settled by the partner (좋아요/다르게), never withdrawn by its author
+        const btns = mine
+          ? (isNew ? '' : '<div class="row nowrap" style="gap:8px;justify-content:flex-end"><button class="btn ghost sm" data-diff-reject="' + esc(c.id) + '" aria-label="' + an + ' 난이도 ' + v + ' 제안 취소">제안 취소</button></div>')
+          : '<div class="row nowrap" style="gap:8px"><button class="btn mint sm grow" data-diff-agree="' + esc(c.id) + '" aria-label="' + an + ' 난이도 ' + v + (isNew ? ' 좋아요' : '에 동의') + '">' + (isNew ? '좋아요' : '동의') + '</button><button class="btn sm" data-diff-counter="' + esc(c.id) + '" aria-label="' + an + ' 난이도를 다른 숫자로 역제안">다르게</button>' + (isNew ? '' : '<button class="btn ghost sm" data-diff-reject="' + esc(c.id) + '" aria-label="' + an + ' 난이도 ' + cur + ' 그대로 두기">그대로</button>') + '</div>';
+        return '<div class="card' + (mine ? ' flat' : '') + '" style="display:flex;flex-direction:column;gap:10px"><div class="row nowrap" style="gap:10px;align-items:flex-start"><span style="display:inline-flex;flex-shrink:0">' + capsuleSVG(c.icon, DIFF_COLORS[v], 36, { label: '난이도 ' + v + ' 캡슐' }) + '</span><div class="grow" style="font-size:13px;word-break:keep-all;line-height:1.45">' + text + '</div></div>' + btns + '</div>';
+      };
+      const forMe = props.filter((c) => diffProposalOf(c).by !== me), waiting = props.filter((c) => diffProposalOf(c).by === me);
+      const newForMe = forMe.filter((c) => diffProposalOf(c).isNew).length;
+      const allBtn = newForMe >= 2 ? '<button class="btn mint" data-diff-agree-all style="min-height:46px">새 캡슐 ' + newForMe + '개 난이도 전부 좋아요</button>' : '';
+      talkSec = '<section><div class="sec-head"><h2>난이도 협의 <span class="pill gold num">' + props.length + '</span></h2><span class="sub">둘이 동의해야 바뀌어요</span></div>' + allBtn + forMe.map(item).join('') + waiting.map(item).join('') + '</section>';
+    }
     const quickSec = '<section>' + (quickOpen ? quickForm() : '<button class="btn" data-quick-open style="border-style:dashed;box-shadow:none;min-height:50px;justify-content:space-between;text-align:left"><span>+ 급한 캡슐 넣기</span><span class="muted" style="font-weight:400;font-size:12px">지금 생긴 일을 바로 뽑아요</span></button>') + '</section>';
     const pendingSec = pending.length ? '<section><div class="sec-head"><h2>밀린 캡슐 <span class="pill red num">' + pending.length + '</span></h2><span class="sub">하기 전엔 그 일은 다시 안 떨어져요</span></div>' + pending.map(capsuleCard).join('') + '</section>' : '';
     const trackSec = '<section><div class="sec-head"><h2>다음에 떨어질 캡슐</h2><span class="sub">말판 트랙 · 가까운 순서</span></div>' + trackHTML(today, ready) + '</section>';
@@ -867,7 +944,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       '<div style="font-size:15px;font-weight:700;margin-top:8px">' + (lead ? josa(esc(playerName(lead)), '이', '가') + ' 토큰 ' + diff + '개 앞서요' : '지금 딱 똑같아요') + '</div>' +
       '<div class="muted" style="font-size:12px">' + (lead && pp > 0 ? '그래서 다음 추첨에서 ' + josa(esc(playerName(other(lead))), '이', '가') + ' 걸릴 확률이 ' + pp + '%p 올라가요' : '토큰 10개 차이마다 뒤처진 쪽이 2%p 더 잘 걸려요') + '</div>' +
       '<div class="row nowrap" style="margin-top:10px;justify-content:space-between"><span class="muted" style="font-size:11px">고마우면 토큰으로 양보할 수 있어요</span>' + (giftOpen ? '' : '<button class="btn sm" data-gift-open>토큰 보내기</button>') + '</div>' + giftForm + '</section>';
-    return hero + (banner ? '<section>' + banner + '</section>' : '') + notice + todaySec + pendingSec + quickSec + trackSec + scoreSec;
+    return hero + (banner ? '<section>' + banner + '</section>' : '') + notice + talkSec + todaySec + pendingSec + quickSec + trackSec + scoreSec;
   }
   // one-off capsule: added and drawn on the spot, skips the wallet (50% + catch-up), disappears from the board once done
   function quickForm() {
@@ -973,10 +1050,12 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const list = regular.map((c) => {
       if (editingChore === c.id) return choreForm(c);
       const pend = pendingDrawOf(state, c.id, today);
-      const d = pend ? null : nextDue(c, from); const r = calcProb(c, s); const dif = choreDiff(c);
+      const d = pend ? null : nextDue(c, from); const r = calcProb(c, s); const dif = choreDiff(c); const prop = diffProposalOf(c);
+      const propPill = prop ? '<span class="pill gold num">' + (prop.isNew ? '난이도 ' + prop.value + ' 확인 중' : '난이도 ' + prop.value + ' 제안 중') + '</span>' : '';
+      const propLine = prop ? '<br>' + (prop.by === me ? esc(playerName(other(me))) + '의 ' + (prop.isNew ? '확인을' : '동의를') + ' 기다려요' : josa(esc(playerName(prop.by)), '이', '가') + ' ' + (prop.isNew ? '정한 난이도예요 · 오늘 화면에서 확인해 주세요' : '난이도 ' + prop.value + ' 제안을 보냈어요 · 오늘 화면에서 답해 주세요')) : '';
       return '<article class="card capsule-card">' + '<span class="cap-icon" style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:54px">' + capsuleSVG(c.icon, DIFF_COLORS[dif], 44, { label: '난이도 ' + dif + ' 캡슐' }) + '</span>' +
-        '<div class="info"><div class="title"><span>' + esc(c.name) + '</span><span class="pill">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span><span class="pill" style="background:' + DIFF_COLORS[dif] + ';color:#2B2622">난이도 ' + dif + '</span>' + (pend ? '<span class="pill red num">' + Math.max(0, daysBetween(pend.date, today)) + '일 밀림</span>' : '') + '</div>' +
-        '<div class="reason">' + (pend ? josa(esc(playerName(pend.who)), '이', '가') + ' 끝내면 다시 돌아요' : d ? '다음 추첨 ' + relDay(d, today) + ' (' + fmtDate(d, true) + ')' : '') + ' · 내가 하면 +' + rewardOf(state, me, c.id, dif) + ' 토큰 · 미루기 ' + postponeCost(dif) + '</div>' +
+        '<div class="info"><div class="title"><span>' + esc(c.name) + '</span><span class="pill">' + (c.period === 1 ? '매일' : c.period + '일마다') + '</span><span class="pill" style="background:' + DIFF_COLORS[dif] + ';color:#2B2622">난이도 ' + dif + '</span>' + propPill + (pend ? '<span class="pill red num">' + Math.max(0, daysBetween(pend.date, today)) + '일 밀림</span>' : '') + '</div>' +
+        '<div class="reason">' + (pend ? josa(esc(playerName(pend.who)), '이', '가') + ' 끝내면 다시 돌아요' : d ? '다음 추첨 ' + relDay(d, today) + ' (' + fmtDate(d, true) + ')' : '') + ' · 내가 하면 +' + rewardOf(state, me, c.id, dif) + ' 토큰 · 미루기 ' + postponeCost(dif) + propLine + '</div>' +
         '<div class="pbar" style="height:8px">' + pbarInner(r.pA, r.base) + '</div></div>' +
         '<button class="btn sm" data-edit-chore="' + esc(c.id) + '">고치기</button></article>';
     }).join('');
@@ -984,16 +1063,20 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     return '<section><div class="sec-head"><h2>말판 위 캡슐 ' + regular.length + '개</h2><span class="sub">캡슐 하나 = 집안일 하나</span></div>' + (list || '<div class="card soft empty">아직 캡슐이 없어요</div>') +
       (addingChore ? choreForm(null) : '<button class="btn red" data-add-chore>+ 캡슐 추가</button>') + '</section>' +
       (onceList ? '<section><div class="sec-head"><h2>급한 캡슐</h2><span class="sub">오늘 화면에서 넣은 한 번짜리</span></div>' + onceList + '</section>' : '') +
-      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도, 미루기 = 난이도 × 20 토큰이에요.<br>뽑힌 캡슐을 안 하고 두면 <b>며칠 밀렸는지</b> 표시되고, 그 일은 끝낼 때까지 다시 떨어지지 않아요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
+      '<section class="card flat"><p class="rule"><b>주기</b>는 캡슐이 말판을 한 바퀴 도는 날수예요. 돌아온 날 ' + fmtTime(state.drawTime || '08:00') + '에 추첨돼요.<br><b>난이도</b>(1~5)는 캡슐 색이고, 완수 토큰 = (상대가 그 일을 싫어하는 정도 1~10) × 난이도, 미루기 = 난이도 × 20 토큰이에요. ' + (store.mode === 'fb' ? '난이도는 <b>두 사람이 동의해야</b> 바뀌어요(오늘 화면에서 답해요).' : '두 폰을 연결하면 난이도는 <b>두 사람이 동의해야</b> 바뀌어요. 지금(이 폰에만 저장되는 모드)은 바로 바뀌어요.') + '<br>뽑힌 캡슐을 안 하고 두면 <b>며칠 밀렸는지</b> 표시되고, 그 일은 끝낼 때까지 다시 떨어지지 않아요.<br>캡슐을 더하거나 빼면 두 사람 모두 <b>동전 지갑</b>을 다시 채워야 해요.</p></section>';
   }
   function choreForm(c) {
     const isNew = !c; const today = dateStr(new Date()); const d = c || { name: '', icon: 'dish', period: 3, startDate: today, difficulty: 3 };
     const startIn = c ? Math.max(0, daysBetween(today, c.startDate)) : 0;
     const icons = Object.keys(ICONS).map((k) => '<button type="button" class="chip' + (d.icon === k ? ' on' : '') + '" data-form-icon="' + k + '" aria-pressed="' + (d.icon === k) + '" aria-label="' + ICON_NAMES[k] + '">' + icon(k, 18) + '</button>').join('');
-    return '<div class="card" id="chore-form" data-chore-id="' + esc(c ? c.id : '') + '" data-start-in="' + startIn + '" style="display:flex;flex-direction:column;gap:10px">' +
+    // the chips start on my own pending proposal (so re-saving keeps it) or on the agreed difficulty
+    const prop = c ? diffProposalOf(c) : null; const shared = store.mode === 'fb';
+    const difInit = prop && prop.by === me ? clamp(Number(prop.value), 1, 5) : choreDiff(d);
+    const difNote = !shared ? '' : prop ? (prop.by === me ? '<div class="muted" style="font-size:11px">' + esc(playerName(other(me))) + '의 ' + (prop.isNew ? '확인을' : '동의를') + ' 기다리는 중 · 지금 확정 난이도는 ' + choreDiff(d) + '</div>' : prop.isNew ? '<div class="muted" style="font-size:11px">' + josa(esc(playerName(prop.by)), '이', '가') + ' 새 캡슐 난이도를 <b>' + prop.value + '</b>' + (Number(prop.value) === 3 ? '으로' : '로') + ' 정했어요. 확인은 오늘 화면의 "좋아요"로, 여기서 다른 숫자를 고르면 역제안이에요.</div>' : '<div class="muted" style="font-size:11px">' + josa(esc(playerName(prop.by)), '이', '가') + ' 난이도 <b>' + prop.value + '</b> 제안을 보냈어요. 같은 숫자를 고르면 동의, 다른 숫자는 역제안이에요.</div>') : '<div class="muted" style="font-size:11px">' + (isNew ? '올린 뒤 ' + esc(playerName(other(me))) + '의 확인을 받아요' : '바꾸면 ' + josa(esc(playerName(other(me))), '이', '가') + ' 동의해야 적용돼요') + '</div>';
+    return '<div class="card" id="chore-form" data-chore-id="' + esc(c ? c.id : '') + '" data-start-in="' + startIn + '" data-diff-init="' + difInit + '" style="display:flex;flex-direction:column;gap:10px">' +
       '<div class="field"><label for="cf-name">집안일 이름 <span class="muted" style="font-weight:400">(적으면 아이콘을 알아서 골라요)</span></label><input class="input" id="cf-name" data-cf-name value="' + esc(d.name) + '" placeholder="예: 분리수거" maxlength="12"></div>' +
       '<div class="field"><label>아이콘</label><div class="chips">' + icons + '</div><input type="hidden" id="cf-icon" value="' + esc(d.icon) + '"><input type="hidden" id="cf-icon-touched" value="' + (c ? '1' : '0') + '"></div>' +
-      '<div class="field"><label>난이도 <span class="muted" style="font-weight:400">(색 · 완수 토큰 · 미루기 값)</span></label><div class="row" style="gap:6px">' + diffChips('data-form-diff="', choreDiff(d)) + '</div><input type="hidden" id="cf-diff" value="' + choreDiff(d) + '"></div>' +
+      '<div class="field"><label>난이도 <span class="muted" style="font-weight:400">(색 · 완수 토큰 · 미루기 값)</span></label><div class="row" style="gap:6px">' + diffChips('data-form-diff="', difInit) + '</div><input type="hidden" id="cf-diff" value="' + difInit + '">' + difNote + '</div>' +
       '<div class="row"><div class="field"><label for="cf-period">며칠마다 (1~365)</label><div class="stepper"><button type="button" data-step="cf-period:-1" aria-label="줄이기">−</button><input class="v num" id="cf-period" type="number" inputmode="numeric" min="1" max="365" value="' + d.period + '" style="border:0;width:56px;background:transparent;text-align:center"><button type="button" data-step="cf-period:1" aria-label="늘리기">+</button></div></div>' +
       '<div class="field"><label for="cf-startin">며칠 뒤부터 (0=오늘)</label><div class="stepper"><button type="button" data-step="cf-startin:-1" aria-label="줄이기">−</button><input class="v num" id="cf-startin" type="number" inputmode="numeric" min="0" max="365" value="' + startIn + '" style="border:0;width:56px;background:transparent;text-align:center"><button type="button" data-step="cf-startin:1" aria-label="늘리기">+</button></div></div></div>' +
       '<div class="row nowrap">' + (isNew ? '' : '<button class="btn" data-delete-chore="' + esc(c.id) + '" style="color:var(--red)">빼기</button>') + '<button class="btn" data-cancel-chore>취소</button><button class="btn mint grow" data-save-chore>' + (isNew ? '말판에 올리기' : '저장') + '</button></div></div>';
@@ -1014,12 +1097,23 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         '<div class="stepper"><button type="button" data-coin="' + esc(c.id) + ':-1" aria-label="동전 빼기" ' + (v <= 1 ? 'disabled' : '') + '>−</button><span class="v num">' + v + '</span><button type="button" data-coin="' + esc(c.id) + ':1" aria-label="동전 넣기" ' + (v >= 10 || left <= 0 ? 'disabled' : '') + '>+</button></div></div>' +
         '<div class="coinrow" aria-hidden="true">' + coins.join('') + '</div></div>';
     }).join('');
-    const status = left === 0 ? '<span class="pill mint">동전을 다 썼어요 · 저장할 수 있어요</span>' : left > 0 ? '<span class="pill gold num">남은 동전 ' + left + '개 · 다 써야 저장돼요</span>' : '<span class="pill red num">동전을 ' + (-left) + '개 더 썼어요 · 그만큼 빼 주세요</span>';
-    return '<section><div class="sec-head"><h2>' + esc(playerName(me)) + '의 동전 지갑</h2><span class="sub num">' + used + ' / ' + total + '</span></div>' +
+    const status = left === 0 ? '<span class="pill mint">딱 맞아요 · 저장할 수 있어요</span>' : left > 0 ? '<span class="pill gold num">' + left + '개 더 넣어야 저장돼요</span>' : '<span class="pill red num">' + (-left) + '개 넘쳤어요 · 빼 주세요</span>';
+    // frozen strip: remaining coins + save, follows the list while scrolling
+    const bar = '<div class="stick wallet-stick"><div class="card wallet-bar"><div class="grow" style="display:flex;flex-direction:column;gap:4px"><div class="muted" style="font-size:11px;font-weight:700">' + esc(playerName(me)) + '의 지갑 · 남은 동전</div><div class="row nowrap" style="gap:8px"><span class="num big' + (left === 0 ? ' ok' : left < 0 ? ' over' : '') + '">' + left + '<span style="font-size:13px">개</span></span>' + status + '</div>' +
+      '<div class="tube" style="height:8px"><div style="width:' + Math.min(100, total ? used / total * 100 : 0) + '%;background:' + (left < 0 ? 'var(--red)' : 'var(--gold)') + '"></div></div></div>' +
+      '<div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;gap:4px;align-items:flex-end"><span class="muted num" style="font-size:11px">' + used + ' / ' + total + '</span><button class="btn mint sm" data-wallet-save ' + (left !== 0 ? 'disabled' : '') + '>저장</button></div></div></div>';
+    return '<section>' + bar +
       '<div class="notice"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><div>동전을 <b>많이</b> 넣은 일은 "그래도 괜찮은 일"이라 내가 더 자주 걸려요. <b>싫은 일엔 동전을 아끼면</b> 나는 드물게 걸리고, 대신 ' + josa(esc(playerName(other(me))), '이', '가') + ' 그 일을 해 주면 토큰을 많이 받아요(싫어하는 만큼 × 난이도).</div></div>' +
-      '<div>' + status + '</div>' + (rows || '<div class="card soft empty">말판에 캡슐이 없어요. 먼저 캡슐을 추가해 주세요.</div>') + '</section>' +
+      (rows || '<div class="card soft empty">말판에 캡슐이 없어요. 먼저 캡슐을 추가해 주세요.</div>') + '</section>' +
       (cs.length ? '<section><div class="row nowrap"><button class="btn" data-wallet-even>똑같이 나누기</button><button class="btn mint grow" data-wallet-save ' + (left !== 0 ? 'disabled' : '') + ' style="min-height:50px">이대로 저장</button></div>' +
         '<p class="rule">규칙: 동전은 집안일 수 × 5개(' + total + '개). 캡슐마다 1~10개, 남김 없이. 두 사람 동전 합이 같아서 서로 공평해요.</p></section>' : '');
+  }
+
+  // screen readers: the wallet bar is rebuilt on every tap, so announce the remaining count through the persistent live region
+  function announceWallet() {
+    const lv = $('#live'); if (!lv || !walletDraft) return;
+    const cs = regularChoresOf(state); const total = 5 * cs.length; let used = 0; for (const c of cs) used += walletDraft[c.id] || 0; const left = total - used;
+    lv.textContent = ''; setTimeout(() => { lv.textContent = '남은 동전 ' + left + '개' + (left === 0 ? ', 저장할 수 있어요' : left > 0 ? ', ' + left + '개 더 넣어야 저장돼요' : ', ' + (-left) + '개 넘쳤어요'); }, 50);
   }
 
   // ----- calendar: who did what, when; weekly and monthly totals (counted on the day the capsule was finished) -----
@@ -1085,7 +1179,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const p = state.players;
     const person = (k) => {
       const open = fitOpen === k;
-      return '<div class="card" style="display:flex;flex-direction:column;gap:10px"><div style="display:flex;gap:12px;align-items:center"><div style="width:76px;flex-shrink:0">' + charSVG(k, 'calm') + '</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div><button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button></div></div>' + (open ? outfitEditor(k, p[k], k) : '') + '</div>';
+      // while the outfit editor is open the character row stays frozen at the top of the card (live preview of my look)
+      return '<div class="card' + (open ? ' has-stick' : '') + '" style="display:flex;flex-direction:column;gap:10px"><div class="fit-head' + (open ? ' stick' : '') + '"><div style="width:' + (open ? 96 : 76) + 'px;flex-shrink:0">' + charSVG(k, 'calm') + '</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><div class="field"><label for="set-name-' + k + '">이름' + (k === me ? ' (나)' : '') + '</label><input class="input" id="set-name-' + k + '" data-set-name="' + k + '" value="' + esc(p[k].name) + '" maxlength="6"></div><button type="button" class="btn sm" data-fit-toggle="' + k + '" aria-expanded="' + open + '" style="align-self:flex-start">' + (open ? '코디 닫기' : '코디 바꾸기') + '</button></div></div>' + (open ? outfitEditor(k, p[k], k) : '') + '</div>';
     };
     const share = store.mode === 'fb'
       ? '<section class="card" style="display:flex;flex-direction:column;gap:8px"><div class="row nowrap" style="justify-content:space-between"><div><div class="muted" style="font-size:12px">우리 방 코드</div><div class="code">' + esc(store.code) + '</div></div><button class="btn sm" data-copy-invite>초대 링크 복사</button></div><p class="rule">상대 폰에서 초대 링크를 열거나 방 코드를 입력하면 같은 기계를 봐요. 두 폰이 같은 추첨 결과를 보고, 한쪽이 "다 했어요"를 누르면 바로 반영돼요.</p><button class="btn ghost sm" data-leave-room style="align-self:flex-start;color:var(--muted)">이 폰에서 방 나가기</button></section>'
@@ -1104,7 +1199,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       '<b>6. 표정</b> — 상대보다 토큰 25개 뒤면 삐지고, 60개 뒤면 졸아요. 25개 앞서면 뿌듯해해요.<br>' +
       '<b>7. 밀린 캡슐</b> — 안 한 캡슐은 사라지지 않고 "며칠 밀림"이 붙어요. 그 일은 끝낼 때까지 다시 떨어지지 않아요(돌아온 횟수만 세요).<br>' +
       '<b>8. 급한 캡슐</b> — 갑자기 생긴 일은 오늘 화면에서 바로 넣고 뽑아요. 지갑과 상관없이 반반(+따라잡기), 완수 토큰은 6 × 난이도, 끝내면 말판에서 사라져요.<br>' +
-      '<b>9. 달력</b> — 누가 언제 뭘 했는지, 주간·월간 합계를 달력 탭에서 봐요. 끝낸 날 기준이에요.</p></section>' +
+      '<b>9. 달력</b> — 누가 언제 뭘 했는지, 주간·월간 합계를 달력 탭에서 봐요. 끝낸 날 기준이에요.<br>' +
+      '<b>10. 난이도 협의</b> — ' + (store.mode === 'fb' ? '난이도는 두 사람이 동의해야 바뀌어요. 한쪽이 고치면 상대 오늘 화면에 "난이도 협의"로 떠서 동의·다르게·그대로를 고를 수 있어요. 새 캡슐(처음 넣은 캡슐 포함)은 올린 사람의 난이도로 시작하되 상대가 "좋아요"나 "다르게"로 확인해요. 급한 캡슐은 예외예요.' : '두 폰을 연결하면 난이도는 두 사람이 동의해야 바뀌어요(상대 오늘 화면에 "난이도 협의"로 떠요). 지금은 혼자 써보는 모드라 바로 바뀌어요.') + '</p></section>' +
       '<section><button class="btn" data-reset style="color:var(--red)">' + (resetArmed ? '정말 전부 지울까요? 다시 누르면 지워져요' : '기계 초기화 (전부 지우기)') + '</button></section>';
   }
 
@@ -1112,12 +1208,12 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   function bind() {
     const app = $('#app');
     app.onclick = async (e) => {
-      const t = e.target.closest('[data-go],[data-role],[data-quick-open],[data-quick-draw],[data-qa-icon],[data-qa-diff],[data-cal-month],[data-cal-day],[data-onb-next],[data-onb-start],[data-onb-add],[data-onb-remove],[data-onb-period],[data-onb-icon],[data-onb-diff],[data-form-diff],[data-fit],[data-fit-random],[data-fit-toggle],[data-done],[data-postpone],[data-gift-open],[data-gift-send],[data-cheer],[data-add-chore],[data-edit-chore],[data-cancel-chore],[data-save-chore],[data-delete-chore],[data-form-icon],[data-step],[data-coin],[data-wallet-even],[data-wallet-save],[data-switch-role],[data-reset],[data-room-create],[data-room-pick-join],[data-room-pick],[data-room-join],[data-copy-invite],[data-leave-room],[data-retry]');
+      const t = e.target.closest('[data-go],[data-role],[data-quick-open],[data-quick-draw],[data-qa-icon],[data-qa-diff],[data-cal-month],[data-cal-day],[data-onb-next],[data-onb-start],[data-onb-add],[data-onb-remove],[data-onb-period],[data-onb-icon],[data-onb-diff],[data-form-diff],[data-fit],[data-fit-random],[data-fit-toggle],[data-done],[data-postpone],[data-gift-open],[data-gift-send],[data-cheer],[data-diff-agree],[data-diff-agree-all],[data-diff-reject],[data-diff-counter],[data-add-chore],[data-edit-chore],[data-cancel-chore],[data-save-chore],[data-delete-chore],[data-form-icon],[data-step],[data-coin],[data-wallet-even],[data-wallet-save],[data-switch-role],[data-reset],[data-room-create],[data-room-pick-join],[data-room-pick],[data-room-join],[data-copy-invite],[data-leave-room],[data-retry]');
       if (!t) return;
       const ds = t.dataset;
       try {
         if (ds.go !== undefined) { e.preventDefault(); go(ds.go); return; }
-        if (ds.role) { setRole(ds.role); return; }
+        if (ds.role) { const r = ds.role; if (store.mode === 'fb' && state && state.setupPending) { await withState((s) => { if (!s.setupPending) return; delete s.setupPending; for (const c of choresOf(s)) if (!c.once && !diffProposalOf(c)) c.diffProposal = { value: choreDiff(c), by: r, ts: Date.now(), isNew: true }; }); } setRole(r); return; }   // onboarding capsules were set by one person: the partner confirms their difficulties
         // calendar
         if (ds.calMonth) { const [y, m] = (calMonth || dateStr(new Date()).slice(0, 7)).split('-').map(Number); const d = new Date(y, m - 1 + Number(ds.calMonth), 1); calMonth = d.getFullYear() + '-' + pad(d.getMonth() + 1); calDay = null; render(); const b = $('[data-cal-month="' + ds.calMonth + '"]'); const f = (b && !b.disabled) ? b : $('[data-cal-month="-1"]'); f && f.focus(); return; }
         if (ds.calDay) { calDay = calDay === ds.calDay ? null : ds.calDay; render(); const c = $('[data-cal-day="' + ds.calDay + '"]'); c && c.focus(); return; }
@@ -1150,6 +1246,11 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         if (ds.giftOpen !== undefined) { giftOpen = !giftOpen; render(); if (giftOpen) setTimeout(() => { const i = $('#gift-amt'); i && i.focus(); }, 0); return; }
         if (ds.giftSend !== undefined) { const amt = Math.floor(Number(($('#gift-amt') || {}).value) || 0); if (amt < 1) { toast('보낼 개수를 적어 주세요'); return; } let msg = ''; await withState((s) => { const tk = tokensOf(s); if (tk[me] < amt) { msg = '토큰이 모자라요'; return; } tk[me] -= amt; tk[other(me)] += amt; s.tokens = tk; pushLedger(s, { type: 'gift', from: me, to: other(me), amount: amt }); msg = nameOf(s, other(me)) + '에게 토큰 ' + amt + '개를 보냈어요'; }); giftOpen = false; if (store.mode !== 'fb') afterStateChange(); toast(msg); hearts(); return; }
         if (ds.cheer) { const k = ds.cheer; await withState((s) => { const r = s.draws && s.draws[k]; if (r) r.cheers = (r.cheers || 0) + 1; }); if (store.mode !== 'fb') afterStateChange(); hearts(); return; }
+        // difficulty proposals (agree / drop / counter-propose through the edit form)
+        if (ds.diffAgree) { const id = ds.diffAgree; const who = me; let msg = '이미 정리된 제안이에요'; await withState((s) => { const c = s.chores.find((x) => x.id === id); const p = c && diffProposalOf(c); if (!p || p.by === who) return; setChoreDiff(s, c, p.value); msg = c.name + ' 난이도 ' + c.difficulty + ' · 둘 다 동의했어요'; }); if (store.mode !== 'fb') afterStateChange(); toast(msg); return; }
+        if (ds.diffAgreeAll !== undefined) { const who = me; let n = 0; await withState((s) => { for (const c of choresOf(s)) { const p = diffProposalOf(c); if (p && p.isNew && p.by !== who && !c.once) { setChoreDiff(s, c, p.value); n++; } } }); if (store.mode !== 'fb') afterStateChange(); toast(n ? '새 캡슐 ' + n + '개 난이도를 확인했어요' : '확인할 캡슐이 없어요'); return; }
+        if (ds.diffReject) { const id = ds.diffReject; const who = me; let msg = '이미 정리된 제안이에요'; await withState((s) => { const c = s.chores.find((x) => x.id === id); const p = c && diffProposalOf(c); if (!p) return; if (p.isNew) { msg = '새 캡슐 난이도는 좋아요나 다르게로 답해 주세요'; return; } delete c.diffProposal; msg = p.by === who ? '제안을 취소했어요' : c.name + ' 난이도는 ' + choreDiff(c) + ' 그대로예요'; }); if (store.mode !== 'fb') afterStateChange(); toast(msg); return; }
+        if (ds.diffCounter) { const id = ds.diffCounter; route = 'board'; walletDraft = null; addingChore = false; resetArmed = false; switchArmed = false; fitOpen = null; giftOpen = false; quickOpen = false; editingChore = id; render(); setTimeout(() => { const f = $('#chore-form'); if (f) { f.scrollIntoView({ behavior: 'smooth', block: 'start' }); const b = f.querySelector('[data-form-diff].on') || f.querySelector('[data-form-diff]'); b && b.focus({ preventScroll: true }); } }, 60); return; }
         // board
         if (ds.addChore !== undefined) { addingChore = true; editingChore = null; render(); return; }
         if (ds.editChore) { editingChore = ds.editChore; addingChore = false; render(); return; }
@@ -1161,8 +1262,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
         if (ds.saveChore !== undefined) { await saveChoreForm(); return; }
         if (ds.deleteChore) { const id = ds.deleteChore; const wasOnce = chores().some((c) => c.id === id && c.once); await withState((s) => { s.chores = s.chores.filter((c) => c.id !== id); for (const p of ['A', 'B']) if (s.prefs && s.prefs[p]) delete s.prefs[p][id]; for (const k of Object.keys(s.draws || {})) if (s.draws[k].choreId === id && !s.draws[k].done) delete s.draws[k]; }); editingChore = null; walletDraft = null; if (store.mode !== 'fb') afterStateChange(); toast(wasOnce ? '급한 캡슐을 뺐어요 (끝낸 기록만 남아요)' : '캡슐을 뺐어요. 동전 지갑을 다시 채워 주세요'); return; }
         // wallet
-        if (ds.coin) { const [id, dlt] = ds.coin.split(':'); walletDraft[id] = clamp((walletDraft[id] || 5) + Number(dlt), 1, 10); render(); return; }
-        if (ds.walletEven !== undefined) { for (const c of regularChoresOf(state)) walletDraft[c.id] = 5; render(); return; }
+        if (ds.coin) { const [id, dlt] = ds.coin.split(':'); walletDraft[id] = clamp((walletDraft[id] || 5) + Number(dlt), 1, 10); render(); announceWallet(); return; }
+        if (ds.walletEven !== undefined) { for (const c of regularChoresOf(state)) walletDraft[c.id] = 5; render(); announceWallet(); return; }
         if (ds.walletSave !== undefined) { const draft = { ...walletDraft }; const who = me; await withState((s) => { s.prefs = s.prefs || {}; s.prefs[who] = draft; }); if (store.mode !== 'fb') afterStateChange(); toast('지갑을 채웠어요. 다음 추첨부터 적용돼요'); return; }
         // settings
         if (ds.switchRole !== undefined) { if (!switchArmed) { switchArmed = true; render(); setTimeout(() => { switchArmed = false; if (route === 'settings') render(); }, 4000); return; } switchArmed = false; walletDraft = null; setRole(other(me)); toast('이제 이 폰은 ' + playerName(me) + ' 폰이에요'); return; }
@@ -1204,7 +1305,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const cs = d.chores.filter((c) => c.name.trim()).map((c) => ({ id: uid(), name: c.name.trim(), icon: c.icon, period: clamp(c.period, 1, 365), difficulty: choreDiff(c), startDate: addDays(today, clamp(c.startIn || 0, 0, 365)), createdDate: today }));
     if (!cs.length) { toast('캡슐을 하나 이상 넣어 주세요'); return; }
     const pA = { ...d.players[0], name: d.players[0].name.trim() }, pB = { ...d.players[1], name: d.players[1].name.trim() };
-    const fresh = { v: 3, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, tokens: { A: START_TOKENS, B: START_TOKENS }, tokenScale: TOKEN_SCALE, ledger: [], lastProcessed: null, quiet: false };
+    const fresh = { v: 3, seed: uid() + uid(), createdAt: Date.now(), players: { A: pA, B: pB }, drawTime: d.drawTime || '08:00', chores: cs, prefs: { A: {}, B: {} }, draws: {}, tokens: { A: START_TOKENS, B: START_TOKENS }, tokenScale: TOKEN_SCALE, ledger: [], lastProcessed: null, quiet: false, setupPending: store.mode === 'fb' };
     await mutate((s) => (s ? { write: false } : { write: true, state: fresh }));
     if (store.mode !== 'fb') { me = null; afterStateChange(); runDraws(); }
   }
@@ -1214,13 +1315,28 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const form = $('#chore-form'); const id = form.dataset.choreId; const today = dateStr(new Date());
     const startIn = clamp(Number($('#cf-startin').value) || 0, 0, 365); const startChanged = String(startIn) !== form.dataset.startIn;
     const start = addDays(today, startIn);
+    const shared = store.mode === 'fb'; const who = me; const difTouched = String(dif) !== form.dataset.diffInit;
+    let msg = id ? '캡슐을 고쳤어요' : '캡슐을 올렸어요. 두 사람 모두 동전 지갑을 다시 채워 주세요';
     await withState((s) => {
-      if (id) { const c = s.chores.find((x) => x.id === id); if (c) { const periodChanged = c.period !== period || startChanged; c.name = name; c.icon = ic; c.period = period; c.difficulty = dif; if (startChanged) c.startDate = start; if (periodChanged) c.createdDate = (c.createdDate && c.createdDate > today) ? c.createdDate : today; } }
-      else s.chores.push({ id: uid(), name, icon: ic, period, difficulty: dif, startDate: start, createdDate: today });
+      if (id) {
+        const c = s.chores.find((x) => x.id === id); if (!c) return;
+        const periodChanged = c.period !== period || startChanged; c.name = name; c.icon = ic; c.period = period; if (startChanged) c.startDate = start; if (periodChanged) c.createdDate = (c.createdDate && c.createdDate > today) ? c.createdDate : today;
+        if (!shared) { if (dif !== choreDiff(c)) setChoreDiff(s, c, dif); else delete c.diffProposal; return; }
+        // shared room: difficulty only moves with the partner's agreement
+        if (!difTouched) return;
+        const cur = choreDiff(c); const p = diffProposalOf(c); const pending = !!(p && p.isNew);   // pending: a new capsule nobody has confirmed yet
+        if (p && p.by !== who && Number(p.value) === dif) { setChoreDiff(s, c, dif); msg = pending ? c.name + ' 난이도 ' + dif + ' 확인했어요' : '난이도 ' + dif + '에 동의했어요. 바로 적용돼요'; }
+        else if (dif === cur && !pending) { if (p) { delete c.diffProposal; msg = p.by === who ? '난이도 제안을 거뒀어요' : '난이도는 ' + cur + ' 그대로 두기로 했어요'; } }
+        else { c.diffProposal = Object.assign({ value: dif, by: who, ts: Date.now() }, pending ? { isNew: true } : {}); msg = pending ? '새 캡슐 난이도 ' + dif + ' · ' + josa(nameOf(s, other(who)), '이', '가') + ' 확인하면 정해져요' : '난이도 ' + cur + ' → ' + dif + ' 제안을 보냈어요. ' + josa(nameOf(s, other(who)), '이', '가') + ' 동의하면 바뀌어요'; }
+      } else {
+        const c = { id: uid(), name, icon: ic, period, difficulty: dif, startDate: start, createdDate: today };
+        if (shared) { c.diffProposal = { value: dif, by: who, ts: Date.now(), isNew: true }; msg = '캡슐을 올렸어요. 난이도는 ' + josa(nameOf(s, other(who)), '이', '가') + ' 확인해요. 두 사람 모두 동전 지갑을 다시 채워 주세요'; }
+        s.chores.push(c);
+      }
     });
     addingChore = false; editingChore = null; walletDraft = null;
     if (store.mode !== 'fb') afterStateChange();
-    toast(id ? '캡슐을 고쳤어요' : '캡슐을 올렸어요. 두 사람 모두 동전 지갑을 다시 채워 주세요');
+    toast(msg);
     runDraws();
   }
   function hearts() { const hero = $('#hero'); if (!hero) return; for (let i = 0; i < 5; i++) { const h = document.createElement('span'); h.className = 'heart'; h.textContent = '♥'; h.style.color = 'var(--red)'; h.style.left = (30 + Math.random() * 40) + '%'; h.style.top = '40%'; h.style.animationDelay = (i * 0.12) + 's'; hero.appendChild(h); setTimeout(() => h.remove(), 1800); } }
