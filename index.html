@@ -294,6 +294,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .ticket.wait { border-style: dashed; box-shadow: none; }
 .ticket.req .stub { background: var(--gold); color: #2B2622; }
 .ticket .price { font-size: 18px; font-weight: 700; } .ticket .price small { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.upd { position: fixed; top: calc(56px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 21; display: flex; align-items: center; gap: 10px; background: var(--paper); border: 2px solid var(--line); border-radius: 16px; box-shadow: 0 4px 0 var(--line); padding: 8px 10px 8px 14px; font-size: 13px; font-weight: 700; max-width: calc(100% - 24px); animation: pop .3s ease-out; }
 .toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 13px; font-weight: 700; z-index: 20; animation: pop .25s ease-out; max-width: calc(100% - 32px); text-align: center; }
 .heart { position: absolute; font-size: 18px; animation: heartup 1.6s ease-out forwards; pointer-events: none; }
 @keyframes heartup { 0% { opacity: 0; transform: translateY(0) scale(.6) } 20% { opacity: 1 } 100% { opacity: 0; transform: translateY(-70px) scale(1.2) } }
@@ -454,6 +455,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   let busy = false;
   let switchArmed = false;
   let fitOpen = null;        // which player's outfit editor is open in settings
+  const BUILD = '2026-11-22.3';   // shown in settings; the app polls its own file and offers a reload when this changes (phones cache old copies)
   let shopAdding = false;    // 소원 쿠폰 가게: "쿠폰 만들기" form open
   let shopEdit = null;       // coupon id whose price is being counter-proposed
   let shopEditSeen = null;   // the price shown when that editor opened; a proposal is refused if the price moved under the user
@@ -907,6 +909,26 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   window.addEventListener('online', resync);
   window.addEventListener('pageshow', (e) => { if (e.persisted) resync(); });
   setInterval(() => { if (document.visibilityState === 'visible') resync(); }, 60000);
+  // new-version check: phones keep serving a cached copy of this file; fetch it fresh and offer a reload when BUILD changed
+  let updShown = false;
+  async function checkUpdate() {
+    if (updShown || !/^https?:/.test(location.protocol)) return;
+    try {
+      const res = await fetch(location.pathname + '?u=' + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return;
+      const m = (await res.text()).match(/const BUILD = '([^']+)'/);
+      if (m && m[1] !== BUILD) {
+        updShown = true;
+        const bar = document.createElement('div'); bar.className = 'upd'; bar.setAttribute('role', 'status');
+        bar.innerHTML = '<span>새 버전이 있어요 (' + esc(m[1]) + ')</span><button class="btn mint sm" type="button">지금 새로고침</button>';
+        bar.querySelector('button').onclick = () => { location.replace(location.pathname + '?v=' + encodeURIComponent(m[1])); };
+        document.body.appendChild(bar);
+      }
+    } catch (e) { }
+  }
+  setTimeout(checkUpdate, 2500);
+  setInterval(checkUpdate, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
   function leaveRoom() { if (store.unsub) store.unsub(); store.unsub = null; store.ref = null; store.code = null; lsSet(ROOM_KEY, null); state = null; me = null; reveal = null; roomScreen = 'pick'; route = 'today'; render(); }
   async function wipe() {
     if (store.mode === 'fb' && store.ref) { try { await store.ref.delete(); } catch (e) { } lsSet(roleKey(), null); state = null; me = null; onb = { step: 1, draft: null }; reveal = null; route = 'today'; render(); return; }
@@ -1428,7 +1450,8 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       '<b>9. 달력</b> — 누가 언제 뭘 했는지, 주간·월간 합계를 달력 탭에서 봐요. 끝낸 날 기준이에요.<br>' +
       '<b>10. 난이도 협의</b> — ' + (store.mode === 'fb' ? '난이도는 두 사람이 동의해야 바뀌어요. 한쪽이 고치면 상대 오늘 화면에 "난이도 협의"로 떠서 동의·다르게·그대로를 고를 수 있어요. 새 캡슐(처음 넣은 캡슐 포함)은 올린 사람의 난이도로 시작하되 상대가 "좋아요"나 "다르게"로 확인해요. 급한 캡슐은 예외예요.' : '두 폰을 연결하면 난이도는 두 사람이 동의해야 바뀌어요(상대 오늘 화면에 "난이도 협의"로 떠요). 지금은 혼자 써보는 모드라 바로 바뀌어요.') + '<br>' +
       '<b>11. 소원 쿠폰 가게</b> — 번 토큰으로 "주말 늦잠권" 같은 현실 쿠폰을 사요. 가격은 둘이 동의해야 하고, 산 토큰은 사라져요. 쓸 때는 상대가 "들어줬어요"로 확인해요.</p></section>' +
-      '<section><button class="btn" data-reset style="color:var(--red)">' + (resetArmed ? '정말 전부 지울까요? 다시 누르면 지워져요' : '기계 초기화 (전부 지우기)') + '</button></section>';
+      '<section><button class="btn" data-reset style="color:var(--red)">' + (resetArmed ? '정말 전부 지울까요? 다시 누르면 지워져요' : '기계 초기화 (전부 지우기)') + '</button></section>' +
+      '<section><p class="muted" style="font-size:11px;text-align:center">앱 버전 ' + BUILD + ' · 새 버전이 나오면 위에 알림이 떠요</p></section>';
   }
 
   // ---------- events ----------
