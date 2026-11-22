@@ -137,7 +137,7 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* outfit-change gestures: arms swing in from --from (resting) to the posed shape, hold, swing back; --ge resumes mid-way after a re-render */
 .char .arm, .char .head, .char .head-back, .char .body { transform-box: view-box; }
 .char .head, .char .head-back { transform-origin: 50px 62px; }   /* head pivots at the neck */
-.char .arm-l, .char .arm-rest-l { transform-origin: 34px 70px; } .char .arm-r, .char .arm-rest-r { transform-origin: 66px 70px; }
+.char .arm-l, .char .arm-rest-l { transform-origin: 31px 68px; } .char .arm-r, .char .arm-rest-r { transform-origin: 69px 68px; }
 .char.g-hair, .char.g-acc { --from: 170deg; }
 .char.g-skin { --from: 160deg; }
 .char.g-top { --from: 70deg; }
@@ -659,21 +659,22 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     const L = 'stroke="var(--line)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
     const F = 'stroke="var(--face)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
     // arms: shoulder → elbow → hand, drawn as one outlined polyline (sleeve in the top colour, forearm and hand in skin)
+    // shoulders sit on the torso's edge (31,68)/(69,68); arms hang or rise from BEHIND the torso so the sleeve root is hidden by the shirt
     const POSE = {
-      calm: { l: [[31, 84], [31, 97]], r: [[69, 84], [69, 97]] },
-      sleepy: { l: [[29, 84], [27, 98]], r: [[71, 84], [73, 98]] },
-      pout: { l: [[40, 93], [62, 91]], r: [[60, 81], [40, 83]] },        // crossed: right forearm on top, left below
-      proud: { l: [[28, 84], [24, 95]], r: [[76, 58], [78, 46]] },       // one fist up
-      done: { l: [[24, 58], [22, 46]], r: [[76, 58], [78, 46]] },        // both up
+      calm: { l: [[28, 83], [29, 96]], r: [[72, 83], [71, 96]] },
+      sleepy: { l: [[26, 84], [24, 98]], r: [[74, 84], [76, 98]] },
+      pout: { l: [[40, 93], [62, 91]], r: [[60, 81], [40, 83]] },        // crossed in front: right forearm on top, left below
+      proud: { l: [[27, 84], [25, 95]], r: [[80, 58], [82, 46]] },       // one fist up, outside the torso
+      done: { l: [[20, 58], [18, 46]], r: [[80, 58], [82, 46]] },        // both up
     };
     // outfit-change gestures (settings / onboarding): what the character does with the new piece
     const GPOSE = {
-      hair: { r: [[80, 52], [70, 30]] },                                  // hand up to the hair, head tilts
-      acc: { r: [[80, 52], [68, 38]] },                                   // adjusting glasses / hat, beside the eye
-      skin: { l: [[22, 60], [36, 50]], r: [[78, 60], [64, 50]] },         // hands on cheeks
-      top: { l: [[20, 80], [10, 72]], r: [[80, 80], [90, 72]] },          // "look at my shirt"
-      bottom: { l: [[27, 84], [23, 97]], r: [[73, 84], [77, 97]] },       // little hop
-      random: { l: [[24, 56], [22, 44]], r: [[76, 56], [78, 44]] },       // spin with both arms up
+      hair: { r: [[82, 52], [72, 30]] },                                  // hand up to the hair, head tilts
+      acc: { r: [[82, 54], [70, 38]] },                                   // adjusting glasses / hat, beside the eye
+      skin: { l: [[18, 60], [36, 50]], r: [[82, 60], [64, 50]] },         // hands on cheeks
+      top: { l: [[18, 80], [8, 72]], r: [[82, 80], [92, 72]] },           // "look at my shirt"
+      bottom: { l: [[24, 84], [21, 97]], r: [[76, 84], [79, 97]] },       // little hop
+      random: { l: [[22, 56], [20, 44]], r: [[78, 56], [80, 44]] },       // spin with both arms up
       accent: {},
     };
     // the gesture only plays in the outfit editor (onboarding, or my open editor in settings), never on the hero
@@ -693,10 +694,10 @@ section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
       if (Date.now() - gesture.at < 1250) G = gesture;
     }
     const base = POSE[mood] || POSE.calm; const gp = G ? GPOSE[G.kind] : {};
-    const armSVG = (side, pts, cls) => { const sh = side === 'l' ? [34, 70] : [66, 70]; const [el, hd] = pts; return '<g class="' + cls + '"><path d="M' + sh + ' L' + el + ' L' + hd + '" fill="none" stroke="var(--line)" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M' + el + ' L' + hd + '" fill="none" stroke="' + skin + '" stroke-width="5.5" stroke-linecap="round"/><path d="M' + sh + ' L' + el + '" fill="none" stroke="' + pl.topColor + '" stroke-width="5.5" stroke-linecap="round"/><circle cx="' + hd[0] + '" cy="' + hd[1] + '" r="4" fill="' + skin + '" stroke="var(--line)" stroke-width="2"/></g>'; };
-    // hanging arms go BEHIND the torso; only poses with hands in front (crossed/raised/gesturing) draw over it.
+    const armSVG = (side, pts, cls) => { const sh = side === 'l' ? [31, 68] : [69, 68]; const [el, hd] = pts; return '<g class="' + cls + '"><path d="M' + sh + ' L' + el + ' L' + hd + '" fill="none" stroke="var(--line)" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M' + el + ' L' + hd + '" fill="none" stroke="' + skin + '" stroke-width="5.5" stroke-linecap="round"/><path d="M' + sh + ' L' + el + '" fill="none" stroke="' + pl.topColor + '" stroke-width="5.5" stroke-linecap="round"/><circle cx="' + hd[0] + '" cy="' + hd[1] + '" r="4" fill="' + skin + '" stroke="var(--line)" stroke-width="2"/></g>'; };
+    // arms go BEHIND the torso (hanging or raised — the sleeve root stays under the shirt); only crossed arms and gesture poses draw in front.
     // a posed side keeps its resting arm behind too; the two cross-fade so the gesture starts and ends on the normal drawing
-    const frontMood = mood === 'pout' || mood === 'proud' || mood === 'done';
+    const frontMood = mood === 'pout';
     const armOf = (side) => gp[side]
       ? { back: armSVG(side, base[side], 'arm-rest arm-rest-' + side), front: armSVG(side, gp[side], 'arm arm-' + side) }
       : (frontMood ? { back: '', front: armSVG(side, base[side], 'arm arm-' + side) } : { back: armSVG(side, base[side], 'arm arm-' + side), front: '' });
